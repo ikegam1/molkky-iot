@@ -45,7 +45,7 @@ class MolkkyGame:
         # 画面の物理リフレッシュ（真っ白にする）
         print("Refreshing screen...")
         self.epd.Clear() 
-        self.state = 0 # 0:設定, 1:試合中
+        self.state = 0 # 0:設定, 1:試合中, 2:表示診断
         self.num_players = 2
         self.players = []
         self.cur_idx = 0
@@ -135,24 +135,45 @@ class MolkkyGame:
             self.epd.text("MOLKKY", SAFE_X + 8, SAFE_Y + 8, 0)
             self.epd.text("PLAYERS", SAFE_X + 8, SAFE_Y + 26, 0)
             self.draw_big_number(str(self.num_players), SAFE_X + 86, SAFE_Y + 40, 10, 0)
-            self.epd.text("1-4:SET", SAFE_X + 8, SAFE_Y + 96, 0)
-            self.epd.text("A:START", SAFE_X + 88, SAFE_Y + 96, 0)
-        else:
+            self.epd.text("1-4:SET", SAFE_X + 8, SAFE_Y + 90, 0)
+            self.epd.text("A:START", SAFE_X + 88, SAFE_Y + 90, 0)
+            self.epd.text("D:TEST", SAFE_X + 8, SAFE_Y + 106, 0)
+        elif self.state == 1:
             p = self.players[self.cur_idx]
             self.epd.fill_rect(SAFE_X, SAFE_Y, 180, 14, 0) # 右端まで伸ばさない
             self.epd.text("TURN " + p["name"], SAFE_X + 8, SAFE_Y + 3, 0xff)
 
             if self.num_players <= 2:
-                # 2人対戦は上半分に左右2列。下部の細かい表示は捨てる。
-                card_w = 106
-                self.draw_player_score(self.players[0], SAFE_X + 4, SAFE_Y + 24, card_w, 8)
+                # 右側ほど崩れるので、2人分を左〜中央に縦積みする。
+                # 情報量より可読性優先。
+                self.draw_player_score(self.players[0], SAFE_X + 8, SAFE_Y + 22, 150, 6)
                 if len(self.players) > 1:
-                    self.draw_player_score(self.players[1], SAFE_X + 118, SAFE_Y + 24, card_w, 8)
+                    self.draw_player_score(self.players[1], SAFE_X + 8, SAFE_Y + 68, 150, 6)
             else:
                 # 3-4人は現在プレイヤーだけを大きく表示する。
-                self.draw_player_score(p, SAFE_X + 20, SAFE_Y + 26, 150, 10)
+                self.draw_player_score(p, SAFE_X + 16, SAFE_Y + 28, 150, 9)
+        elif self.state == 2:
+            self.draw_diagnostics()
 
         self.epd.display()
+
+    def draw_diagnostics(self):
+        # 表示RAM/座標のズレ確認用。B(D)で表示、Rで戻る。
+        # 右下に行くほど崩れる場合、縦線・横線の曲がり方で転送方向を判断する。
+        self.epd.text("TEST", SAFE_X + 4, SAFE_Y + 4, 0)
+        self.epd.fill_rect(SAFE_X + 4, SAFE_Y + 18, 180, 3, 0)
+        self.epd.fill_rect(SAFE_X + 4, SAFE_Y + 18, 3, 86, 0)
+        self.epd.fill_rect(SAFE_X + 44, SAFE_Y + 18, 3, 86, 0)
+        self.epd.fill_rect(SAFE_X + 84, SAFE_Y + 18, 3, 86, 0)
+        self.epd.fill_rect(SAFE_X + 124, SAFE_Y + 18, 3, 86, 0)
+        self.epd.fill_rect(SAFE_X + 164, SAFE_Y + 18, 3, 86, 0)
+        self.epd.fill_rect(SAFE_X + 4, SAFE_Y + 44, 180, 3, 0)
+        self.epd.fill_rect(SAFE_X + 4, SAFE_Y + 70, 180, 3, 0)
+        self.epd.fill_rect(SAFE_X + 4, SAFE_Y + 96, 180, 3, 0)
+        self.epd.text("0", SAFE_X + 8, SAFE_Y + 24, 0xff)
+        self.epd.text("40", SAFE_X + 48, SAFE_Y + 24, 0xff)
+        self.epd.text("80", SAFE_X + 88, SAFE_Y + 24, 0xff)
+        self.epd.text("120", SAFE_X + 128, SAFE_Y + 24, 0xff)
 
     def start_game(self):
         self.players = [{"name":f"P{i+1}", "score":0, "miss":0, "sets":0, "out":False} for i in range(self.num_players)]
@@ -224,6 +245,9 @@ while True:
                 game.draw()
             elif key == "10": # Aボタンで開始
                 game.start_game()
+            elif key == "B": # Dボタンで表示診断
+                game.state = 2
+                game.draw()
         
         elif game.state == 1:
             if key.isdigit() or key in ["10", "11", "12"]:
@@ -236,6 +260,11 @@ while True:
             elif key == "U": # Undo
                 game.undo()
             elif key == "R": # 全リセット
+                game.state = 0
+                game.draw()
+
+        elif game.state == 2:
+            if key == "R": # 診断終了
                 game.state = 0
                 game.draw()
 
