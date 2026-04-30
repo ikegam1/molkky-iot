@@ -116,13 +116,33 @@ class EPD_2in13_V4_Landscape(framebuf.FrameBuffer):
         self.send_data(0x80)
         self.ReadBusy()
 
+    def build_epd_buffer(self):
+        # Do not send the FrameBuffer memory directly.  On the real panel the
+        # direct buffer path still skews block shapes, which suggests a packing
+        # mismatch.  Re-pack from logical pixels into the controller's native
+        # portrait byte order: leftmost pixel is bit7, then bit6 ... bit0.
+        row_bytes = self.width // 8
+        out = bytearray(row_bytes * self.height)
+        idx = 0
+        for y in range(self.height):
+            for bx in range(row_bytes):
+                value = 0
+                for bit in range(8):
+                    x = bx * 8 + bit
+                    if self.pixel(x, y):
+                        value |= 0x80 >> bit
+                out[idx] = value
+                idx += 1
+        return out
+
     def display(self, image=None):
-        if image is None:
-            image = self.buffer
         self.SetWindows(0, 0, self.width - 1, self.height - 1)
         self.SetCursor(0, 0)
         self.send_command(0x24)
-        self.send_data_buffer(image)
+        if image is None or image is self.buffer:
+            self.send_data_buffer(self.build_epd_buffer())
+        else:
+            self.send_data_buffer(image)
         self.TurnOnDisplay()
 
     def Clear(self):
