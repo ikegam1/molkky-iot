@@ -18,12 +18,34 @@ class EPD_2in13_V4_Landscape(framebuf.FrameBuffer):
         # logical app coordinates are 250x128, visible panel area is 250x122.
         self.width = (EPD_WIDTH // 8) * 8 + 8 if EPD_WIDTH % 8 != 0 else EPD_WIDTH
         self.height = EPD_HEIGHT
+        self.logical_width = EPD_HEIGHT
         self.buffer = bytearray(self.height * self.width // 8)
 
         self.spi = SPI(1)
         self.spi.init(baudrate=4000_000)
         super().__init__(self.buffer, self.height, self.width, framebuf.MONO_VLSB)
         self.init()
+
+    def _mirror_x(self, x, w):
+        return self.logical_width - x - w
+
+    def text(self, string, x, y, color=1):
+        # The tested panel shows logical x=0 on the physical right side in
+        # Waveshare landscape mode.  Mirror app drawing coordinates so callers
+        # can use normal left-to-right screen coordinates.
+        super().text(string, self._mirror_x(x, len(str(string)) * 8), y, color)
+
+    def fill_rect(self, x, y, w, h, color):
+        super().fill_rect(self._mirror_x(x, w), y, w, h, color)
+
+    def rect(self, x, y, w, h, color):
+        super().rect(self._mirror_x(x, w), y, w, h, color)
+
+    def pixel(self, x, y, color=None):
+        mx = self._mirror_x(x, 1)
+        if color is None:
+            return super().pixel(mx, y)
+        return super().pixel(mx, y, color)
 
     def delay_ms(self, delaytime):
         utime.sleep(delaytime / 1000.0)
