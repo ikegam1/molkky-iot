@@ -154,8 +154,8 @@ class MolkkyGame:
 
     def draw_diagnostics(self):
         # 表示RAM/座標のズレ確認用。B(D)で表示、Rで戻る。
-        # 診断中は 1-4 キーで転送順を切り替え、最も直線的なものを探す。
-        self.epd.text("TEST V" + str(self.epd.transfer_variant), SAFE_X + 4, SAFE_Y + 4, 0)
+        # 診断中は 1-4 キーで data entry mode を切り替える。
+        self.epd.text("ENTRY " + str(self.epd.entry_mode_variant), SAFE_X + 4, SAFE_Y + 4, 0)
         self.epd.fill_rect(SAFE_X + 4, SAFE_Y + 18, 180, 3, 0)
         self.epd.fill_rect(SAFE_X + 4, SAFE_Y + 18, 3, 86, 0)
         self.epd.fill_rect(SAFE_X + 44, SAFE_Y + 18, 3, 86, 0)
@@ -260,10 +260,10 @@ while True:
 
         elif game.state == 2:
             if key in ["1", "2", "3", "4"]:
-                game.epd.set_transfer_variant(int(key) - 1)
+                game.epd.set_entry_mode(int(key) - 1)
                 game.draw()
             elif key == "R": # 診断終了
-                game.epd.set_transfer_variant(0)
+                game.epd.set_entry_mode(0)
                 game.state = 0
                 game.draw()
 
