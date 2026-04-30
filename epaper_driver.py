@@ -23,6 +23,8 @@ class EPD_2in13_V4_Landscape(framebuf.FrameBuffer):
         self.spi = SPI(1)
         self.spi.init(baudrate=4000_000)
         self.transfer_variant = 0
+        self.entry_mode_variant = 0
+        self.entry_modes = [0x07, 0x03, 0x05, 0x06]
         super().__init__(self.buffer, self.height, self.width, framebuf.MONO_VLSB)
         self.init()
 
@@ -94,12 +96,7 @@ class EPD_2in13_V4_Landscape(framebuf.FrameBuffer):
         self.send_data(0x00)
         self.send_data(0x00)
 
-        # Official Waveshare landscape address mode.
-        self.send_command(0x11)
-        self.send_data(0x07)
-
-        self.SetWindows(0, 0, self.width - 1, self.height - 1)
-        self.SetCursor(0, 0)
+        self.set_entry_mode(0)
         self.send_command(0x3C)
         self.send_data(0x05)
         self.send_command(0x21)
@@ -108,6 +105,14 @@ class EPD_2in13_V4_Landscape(framebuf.FrameBuffer):
         self.send_command(0x18)
         self.send_data(0x80)
         self.ReadBusy()
+
+    def set_entry_mode(self, variant):
+        # Diagnostic only: switch controller data entry mode (register 0x11).
+        self.entry_mode_variant = variant
+        self.send_command(0x11)
+        self.send_data(self.entry_modes[variant])
+        self.SetWindows(0, 0, self.width - 1, self.height - 1)
+        self.SetCursor(0, 0)
 
     def set_transfer_variant(self, variant):
         # Diagnostic only: switch byte-transfer order without changing drawing.
