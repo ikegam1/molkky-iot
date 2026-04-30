@@ -114,18 +114,16 @@ class MolkkyGame:
 
     def draw_player_score(self, pl, x, y, w, unit):
         # 右下ほど崩れやすい実機状態なので、情報量を絞って大きく描く。
-        # 小さい M/S 表示は省略し、名前 + 点数だけにする。
+        # 横長の黒帯や反転小文字は崩れが目立つため使わない。
         current = pl == self.players[self.cur_idx]
         if current:
-            self.epd.fill_rect(x, y, w, 12, 0)
-            self.draw_text_center_in(">" + pl["name"], x, w, y + 2, 0xff)
-        else:
-            self.draw_text_center_in(pl["name"], x, w, y + 2, 0)
+            self.epd.fill_rect(x, y + 2, 10, 10, 0)
+        self.epd.text(pl["name"], x + 16, y + 2, 0)
 
         if pl["out"]:
-            self.draw_text_center_in("OUT", x, w, y + 30, 0)
+            self.epd.text("OUT", x + 28, y + 28, 0)
         else:
-            self.draw_big_number_center_in(pl["score"], x, w, y + 18, unit, 0)
+            self.draw_big_number_center_in(pl["score"], x, w, y + 16, unit, 0)
 
     def draw(self):
         self.epd.fill(0xff) # 白
@@ -140,18 +138,15 @@ class MolkkyGame:
             self.epd.text("D:TEST", SAFE_X + 8, SAFE_Y + 106, 0)
         elif self.state == 1:
             p = self.players[self.cur_idx]
-            self.epd.fill_rect(SAFE_X, SAFE_Y, 180, 14, 0) # 右端まで伸ばさない
-            self.epd.text("TURN " + p["name"], SAFE_X + 8, SAFE_Y + 3, 0xff)
 
             if self.num_players <= 2:
-                # 右側ほど崩れるので、2人分を左〜中央に縦積みする。
-                # 情報量より可読性優先。
-                self.draw_player_score(self.players[0], SAFE_X + 8, SAFE_Y + 22, 150, 6)
+                # 2人分を左〜中央に縦積みする。右端と細い文字は使わない。
+                self.draw_player_score(self.players[0], SAFE_X + 10, SAFE_Y + 6, 150, 7)
                 if len(self.players) > 1:
-                    self.draw_player_score(self.players[1], SAFE_X + 8, SAFE_Y + 68, 150, 6)
+                    self.draw_player_score(self.players[1], SAFE_X + 10, SAFE_Y + 62, 150, 7)
             else:
                 # 3-4人は現在プレイヤーだけを大きく表示する。
-                self.draw_player_score(p, SAFE_X + 16, SAFE_Y + 28, 150, 9)
+                self.draw_player_score(p, SAFE_X + 16, SAFE_Y + 24, 150, 9)
         elif self.state == 2:
             self.draw_diagnostics()
 
