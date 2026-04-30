@@ -1,31 +1,34 @@
 import time
 import epaper_driver
 
-# Official-sample style smoke test.
-# This intentionally removes the game/keypad code so we can check whether the
-# panel/driver can render simple text and straight lines at all.
+# Block-only smoke test: no text, no rect/hline/vline helpers.
+# If only the outer border changes, the coordinate/window/driver mapping is
+# still wrong below the application layer.
 
 epd = epaper_driver.EPD_2in13_V4_Landscape()
-print("Official smoke test clear...")
+print("Block pattern smoke test...")
 epd.Clear()
 
 epd.fill(0xff)
-epd.text("Waveshare", 0, 10, 0x00)
-epd.text("ePaper-2.13", 0, 25, 0x00)
-epd.text("Raspberry Pico", 0, 40, 0x00)
-epd.text("Hello World", 0, 55, 0x00)
 
-# Simple reference geometry. Use fill_rect only: some MicroPython framebuf
-# builds do not provide rect/hline/vline, which would stop after Clear().
-epd.fill_rect(0, 0, 120, 3, 0x00)
-epd.fill_rect(0, 0, 3, 120, 0x00)
-epd.fill_rect(0, 117, 120, 3, 0x00)
-epd.fill_rect(117, 0, 3, 120, 0x00)
-epd.fill_rect(0, 80, 120, 3, 0x00)
-epd.fill_rect(60, 0, 3, 120, 0x00)
-epd.fill_rect(10, 90, 20, 20, 0x00)
-epd.fill_rect(45, 90, 20, 20, 0x00)
-epd.fill_rect(80, 90, 20, 20, 0x00)
+# Corner markers
+epd.fill_rect(0, 0, 18, 18, 0x00)
+epd.fill_rect(100, 0, 18, 18, 0x00)
+epd.fill_rect(0, 220, 18, 18, 0x00)
+epd.fill_rect(100, 220, 18, 18, 0x00)
+
+# Large interior blocks, spaced vertically
+epd.fill_rect(20, 35, 30, 22, 0x00)
+epd.fill_rect(60, 70, 30, 22, 0x00)
+epd.fill_rect(20, 105, 70, 10, 0x00)
+epd.fill_rect(20, 140, 30, 22, 0x00)
+epd.fill_rect(60, 175, 30, 22, 0x00)
+
+# Center vertical reference made from short blocks
+epd.fill_rect(56, 20, 10, 30, 0x00)
+epd.fill_rect(56, 85, 10, 30, 0x00)
+epd.fill_rect(56, 150, 10, 30, 0x00)
+epd.fill_rect(56, 215, 10, 25, 0x00)
 
 epd.display()
 
