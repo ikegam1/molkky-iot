@@ -112,50 +112,45 @@ class MolkkyGame:
         tx = x + max(0, (w - self.big_number_width(text, unit)) // 2)
         self.draw_big_number(text, tx, y, unit, color)
 
-    def draw_player_card(self, pl, x, y, w, h, unit):
+    def draw_player_score(self, pl, x, y, w, unit):
+        # 右下ほど崩れやすい実機状態なので、情報量を絞って大きく描く。
+        # 小さい M/S 表示は省略し、名前 + 点数だけにする。
         current = pl == self.players[self.cur_idx]
         if current:
-            self.epd.fill_rect(x, y, w, 11, 0)
-            self.draw_text_center_in("> " + pl["name"], x, w, y + 2, 0xff)
+            self.epd.fill_rect(x, y, w, 12, 0)
+            self.draw_text_center_in(">" + pl["name"], x, w, y + 2, 0xff)
         else:
             self.draw_text_center_in(pl["name"], x, w, y + 2, 0)
 
         if pl["out"]:
-            self.draw_text_center_in("OUT", x, w, y + 22, 0)
+            self.draw_text_center_in("OUT", x, w, y + 30, 0)
         else:
-            self.draw_big_number_center_in(pl["score"], x, w, y + 16, unit, 0)
-
-        miss = "X" * pl["miss"] or "-"
-        self.draw_text_center_in(f"M:{miss} S:{pl['sets']}", x, w, y + h - 10, 0)
+            self.draw_big_number_center_in(pl["score"], x, w, y + 18, unit, 0)
 
     def draw(self):
         self.epd.fill(0xff) # 白
         
         if self.state == 0:
-            # まずは標準 8x8 フォントだけを使い、初期画面の文字崩れを避ける。
-            self.draw_text_center("MOLKKY SCORE", SAFE_Y + 12, 0)
-            self.draw_text_center("BOARD", SAFE_Y + 26, 0)
-            self.draw_text_center(f"Players: [{self.num_players}]", SAFE_Y + 54, 0)
-            self.draw_text_center("1-4: Set Num", SAFE_Y + 80, 0)
-            self.draw_text_center("A: Start", SAFE_Y + 96, 0)
+            # 小さい文字を減らし、左上〜中央に大きく表示する。
+            self.epd.text("MOLKKY", SAFE_X + 8, SAFE_Y + 8, 0)
+            self.epd.text("PLAYERS", SAFE_X + 8, SAFE_Y + 26, 0)
+            self.draw_big_number(str(self.num_players), SAFE_X + 86, SAFE_Y + 40, 10, 0)
+            self.epd.text("1-4:SET", SAFE_X + 8, SAFE_Y + 96, 0)
+            self.epd.text("A:START", SAFE_X + 88, SAFE_Y + 96, 0)
         else:
             p = self.players[self.cur_idx]
-            self.epd.fill_rect(SAFE_X, SAFE_Y, SCREEN_W - SAFE_X * 2, 15, 0) # 黒ヘッダー
-            self.draw_text_center(f"Turn: {p['name']}", SAFE_Y + 4, 0xff)
-            self.draw_text_center(self.msg, 110, 0)
+            self.epd.fill_rect(SAFE_X, SAFE_Y, 180, 14, 0) # 右端まで伸ばさない
+            self.epd.text("TURN " + p["name"], SAFE_X + 8, SAFE_Y + 3, 0xff)
 
-            # 2人対戦では両者の点数を大きく左右に表示する。
-            # 3-4人では2x2グリッドに収める。
             if self.num_players <= 2:
-                card_w = (SCREEN_W - SAFE_X * 2) // 2
-                for i, pl in enumerate(self.players):
-                    self.draw_player_card(pl, SAFE_X + i * card_w, 26, card_w, 78, 6)
+                # 2人対戦は上半分に左右2列。下部の細かい表示は捨てる。
+                card_w = 106
+                self.draw_player_score(self.players[0], SAFE_X + 4, SAFE_Y + 24, card_w, 8)
+                if len(self.players) > 1:
+                    self.draw_player_score(self.players[1], SAFE_X + 118, SAFE_Y + 24, card_w, 8)
             else:
-                card_w = (SCREEN_W - SAFE_X * 2) // 2
-                for i, pl in enumerate(self.players):
-                    x = SAFE_X if i % 2 == 0 else SAFE_X + card_w
-                    y = 24 if i < 2 else 68
-                    self.draw_player_card(pl, x, y, card_w, 40, 4)
+                # 3-4人は現在プレイヤーだけを大きく表示する。
+                self.draw_player_score(p, SAFE_X + 20, SAFE_Y + 26, 150, 10)
 
         self.epd.display()
 
