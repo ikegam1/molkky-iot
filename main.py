@@ -3,6 +3,12 @@ import time
 import framebuf
 import epaper_driver # 先ほど成功したドライバをインポート
 
+# 2.13 inch e-paper を横向きで使う時の論理サイズ
+SCREEN_W = 250
+SCREEN_H = 122
+FONT_W = 8
+FONT_H = 8
+
 # ==========================================
 # 1. キーパッド設定 (GPIO 0-7)
 # ==========================================
@@ -32,15 +38,12 @@ def scan_keypad():
 # ==========================================
 class MolkkyGame:
     def __init__(self):
-        # 1. ドライバの初期化（この時点でepd.init()が走ります）
+        # ドライバの初期化（この時点で epd.init() が走ります）
         self.epd = epaper_driver.EPD_2in13_V4_Landscape()
         
-        # 2. 画面の物理リフレッシュ（真っ白にする）
+        # 画面の物理リフレッシュ（真っ白にする）
         print("Refreshing screen...")
         self.epd.Clear() 
-        
-        # Landscapeモード(横向き)を使用
-        self.epd = epaper_driver.EPD_2in13_V4_Landscape()
         self.state = 0 # 0:設定, 1:試合中
         self.num_players = 2
         self.players = []
@@ -51,28 +54,68 @@ class MolkkyGame:
         # 4. 初期メニューの描画
         # self.draw()
 
+    def text_width(self, text, scale=1):
+        return len(str(text)) * FONT_W * scale
+
+    def draw_text_center(self, text, y, color=0, scale=1):
+        text = str(text)
+        x = max(0, (SCREEN_W - self.text_width(text, scale)) // 2)
+        if scale == 1:
+            self.epd.text(text, x, y, color)
+        else:
+            self.draw_scaled_text(text, x, y, scale, color)
+
+    def draw_text_fit(self, text, x, y, max_w, color=0):
+        text = str(text)
+        max_chars = max_w // FONT_W
+        if len(text) > max_chars:
+            text = text[:max(0, max_chars - 1)] + "."
+        self.epd.text(text, x, y, color)
+
+    def draw_scaled_text(self, text, x, y, scale=2, color=0):
+        # framebuf.text は 8x8 固定なので、一時バッファに描いて拡大コピーする。
+        text = str(text)
+        src_w = max(1, len(text) * FONT_W)
+        src_h = FONT_H
+        src = bytearray(src_w * src_h // 8)
+        fb = framebuf.FrameBuffer(src, src_w, src_h, framebuf.MONO_VLSB)
+        fb.fill(0)
+        fb.text(text, 0, 0, 1)
+        for py in range(src_h):
+            for px in range(src_w):
+                if fb.pixel(px, py):
+                    self.epd.fill_rect(x + px * scale, y + py * scale, scale, scale, color)
+
     def draw(self):
         self.epd.fill(0xff) # 白
         
         if self.state == 0:
-            self.epd.text("MOLKKY SCOREBOARD", 10, 10, 0)
-            self.epd.text(f"Players: [{self.num_players}]", 10, 40, 0)
-            self.epd.text("1-4:Set Num  A:Start", 10, 80, 0)
+            self.draw_text_center("MOLKKY", 8, 0, 3)
+            self.draw_text_center("SCOREBOARD", 38, 0, 2)
+            self.draw_text_center(f"Players: [{self.num_players}]", 68, 0)
+            self.draw_text_center("1-4:Set Num", 90, 0)
+            self.draw_text_center("A:Start", 106, 0)
         else:
             p = self.players[self.cur_idx]
-            self.epd.fill_rect(0, 0, 250, 18, 0) # 黒ヘッダー
-            self.epd.text(f"Turn: {p['name']}", 10, 5, 0xff)
+            self.epd.fill_rect(0, 0, SCREEN_W, 17, 0) # 黒ヘッダー
+            self.draw_text_center(f"Turn: {p['name']}", 5, 0xff)
+
+            # 現在プレイヤーの点数を大きく中央表示
+            score_text = "OUT" if p["out"] else str(p["score"])
+            scale = 4 if len(score_text) <= 2 else 3
+            self.draw_text_center(score_text, 24, 0, scale)
+            self.draw_text_center("POINTS" if not p["out"] else "", 58, 0)
+            self.draw_text_center(self.msg, 106, 0)
             
-            # プレイヤーリスト表示
+            # プレイヤーリスト表示（左右2列に収める）
             for i, pl in enumerate(self.players):
-                x = 10 if i < 2 else 135
-                y = 30 + (i % 2) * 45
+                x = 2 if i < 2 else 128
+                y = 76 + (i % 2) * 15
                 mark = ">" if i == self.cur_idx else " "
                 status = "OUT" if pl["out"] else f"{pl['score']}pt"
-                self.epd.text(f"{mark}{pl['name']}: {status}", x, y, 0)
-                self.epd.text(f"  M:{'X'*pl['miss']} S:{pl['sets']}", x, y+15, 0)
-            
-            self.epd.text(self.msg, 10, 110, 0)
+                miss = "X" * pl["miss"] or "-"
+                line = f"{mark}{pl['name']} {status} M:{miss} S:{pl['sets']}"
+                self.draw_text_fit(line, x, y, 120, 0)
 
         self.epd.display()
 
