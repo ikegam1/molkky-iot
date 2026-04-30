@@ -1,6 +1,5 @@
 import machine
 import time
-import framebuf
 import epaper_driver # 先ほど成功したドライバをインポート
 
 # 2.13 inch e-paper を横向きで使う時の論理サイズ
@@ -54,16 +53,16 @@ class MolkkyGame:
         # 4. 初期メニューの描画
         # self.draw()
 
-    def text_width(self, text, scale=1):
-        return len(str(text)) * FONT_W * scale
+    def text_width(self, text):
+        return len(str(text)) * FONT_W
 
-    def draw_text_center(self, text, y, color=0, scale=1):
+    def draw_text_center(self, text, y, color=0):
+        self.draw_text_center_in(text, 0, SCREEN_W, y, color)
+
+    def draw_text_center_in(self, text, x, w, y, color=0):
         text = str(text)
-        x = max(0, (SCREEN_W - self.text_width(text, scale)) // 2)
-        if scale == 1:
-            self.epd.text(text, x, y, color)
-        else:
-            self.draw_scaled_text(text, x, y, scale, color)
+        tx = x + max(0, (w - self.text_width(text)) // 2)
+        self.epd.text(text, tx, y, color)
 
     def draw_text_fit(self, text, x, y, max_w, color=0):
         text = str(text)
@@ -72,50 +71,87 @@ class MolkkyGame:
             text = text[:max(0, max_chars - 1)] + "."
         self.epd.text(text, x, y, color)
 
-    def draw_scaled_text(self, text, x, y, scale=2, color=0):
-        # framebuf.text は 8x8 固定なので、一時バッファに描いて拡大コピーする。
+    DIGITS = {
+        "0": ("111", "101", "101", "101", "111"),
+        "1": ("010", "110", "010", "010", "111"),
+        "2": ("111", "001", "111", "100", "111"),
+        "3": ("111", "001", "111", "001", "111"),
+        "4": ("101", "101", "111", "001", "001"),
+        "5": ("111", "100", "111", "001", "111"),
+        "6": ("111", "100", "111", "101", "111"),
+        "7": ("111", "001", "010", "010", "010"),
+        "8": ("111", "101", "111", "101", "111"),
+        "9": ("111", "101", "111", "001", "111"),
+    }
+
+    def big_number_width(self, text, unit):
         text = str(text)
-        src_w = max(1, len(text) * FONT_W)
-        src_h = FONT_H
-        src = bytearray(src_w * src_h // 8)
-        fb = framebuf.FrameBuffer(src, src_w, src_h, framebuf.MONO_VLSB)
-        fb.fill(0)
-        fb.text(text, 0, 0, 1)
-        for py in range(src_h):
-            for px in range(src_w):
-                if fb.pixel(px, py):
-                    self.epd.fill_rect(x + px * scale, y + py * scale, scale, scale, color)
+        if not text:
+            return 0
+        return len(text) * 3 * unit + (len(text) - 1) * unit
+
+    def draw_big_number(self, text, x, y, unit=5, color=0):
+        # framebuf.text の拡大は崩れやすいので、点数はブロック数字で描く。
+        text = str(text)
+        cx = x
+        for ch in text:
+            pattern = self.DIGITS.get(ch)
+            if not pattern:
+                cx += 4 * unit
+                continue
+            for row, line in enumerate(pattern):
+                for col, bit in enumerate(line):
+                    if bit == "1":
+                        self.epd.fill_rect(cx + col * unit, y + row * unit, unit, unit, color)
+            cx += 4 * unit
+
+    def draw_big_number_center_in(self, text, x, w, y, unit=5, color=0):
+        text = str(text)
+        tx = x + max(0, (w - self.big_number_width(text, unit)) // 2)
+        self.draw_big_number(text, tx, y, unit, color)
+
+    def draw_player_card(self, pl, x, y, w, h, unit):
+        current = pl == self.players[self.cur_idx]
+        if current:
+            self.epd.fill_rect(x, y, w, 11, 0)
+            self.draw_text_center_in("> " + pl["name"], x, w, y + 2, 0xff)
+        else:
+            self.draw_text_center_in(pl["name"], x, w, y + 2, 0)
+
+        if pl["out"]:
+            self.draw_text_center_in("OUT", x, w, y + 22, 0)
+        else:
+            self.draw_big_number_center_in(pl["score"], x, w, y + 16, unit, 0)
+
+        miss = "X" * pl["miss"] or "-"
+        self.draw_text_center_in(f"M:{miss} S:{pl['sets']}", x, w, y + h - 10, 0)
 
     def draw(self):
         self.epd.fill(0xff) # 白
         
         if self.state == 0:
-            self.draw_text_center("MOLKKY", 8, 0, 3)
-            self.draw_text_center("SCOREBOARD", 38, 0, 2)
-            self.draw_text_center(f"Players: [{self.num_players}]", 68, 0)
-            self.draw_text_center("1-4:Set Num", 90, 0)
-            self.draw_text_center("A:Start", 106, 0)
+            # まずは標準 8x8 フォントだけを使い、初期画面の文字崩れを避ける。
+            self.draw_text_center("MOLKKY SCORE", 16, 0)
+            self.draw_text_center("BOARD", 30, 0)
+            self.draw_text_center(f"Players: [{self.num_players}]", 58, 0)
+            self.draw_text_center("1-4: Set Num", 84, 0)
+            self.draw_text_center("A: Start", 100, 0)
         else:
             p = self.players[self.cur_idx]
-            self.epd.fill_rect(0, 0, SCREEN_W, 17, 0) # 黒ヘッダー
-            self.draw_text_center(f"Turn: {p['name']}", 5, 0xff)
+            self.epd.fill_rect(0, 0, SCREEN_W, 15, 0) # 黒ヘッダー
+            self.draw_text_center(f"Turn: {p['name']}", 4, 0xff)
+            self.draw_text_center(self.msg, 112, 0)
 
-            # 現在プレイヤーの点数を大きく中央表示
-            score_text = "OUT" if p["out"] else str(p["score"])
-            scale = 4 if len(score_text) <= 2 else 3
-            self.draw_text_center(score_text, 24, 0, scale)
-            self.draw_text_center("POINTS" if not p["out"] else "", 58, 0)
-            self.draw_text_center(self.msg, 106, 0)
-            
-            # プレイヤーリスト表示（左右2列に収める）
-            for i, pl in enumerate(self.players):
-                x = 2 if i < 2 else 128
-                y = 76 + (i % 2) * 15
-                mark = ">" if i == self.cur_idx else " "
-                status = "OUT" if pl["out"] else f"{pl['score']}pt"
-                miss = "X" * pl["miss"] or "-"
-                line = f"{mark}{pl['name']} {status} M:{miss} S:{pl['sets']}"
-                self.draw_text_fit(line, x, y, 120, 0)
+            # 2人対戦では両者の点数を大きく左右に表示する。
+            # 3-4人では2x2グリッドに収める。
+            if self.num_players <= 2:
+                for i, pl in enumerate(self.players):
+                    self.draw_player_card(pl, i * 125, 22, 125, 80, 6)
+            else:
+                for i, pl in enumerate(self.players):
+                    x = 0 if i % 2 == 0 else 125
+                    y = 20 if i < 2 else 66
+                    self.draw_player_card(pl, x, y, 125, 42, 4)
 
         self.epd.display()
 
