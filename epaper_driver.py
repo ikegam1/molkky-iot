@@ -22,6 +22,7 @@ class EPD_2in13_V4_Landscape(framebuf.FrameBuffer):
 
         self.spi = SPI(1)
         self.spi.init(baudrate=4000_000)
+        self.transfer_variant = 0
         super().__init__(self.buffer, self.height, self.width, framebuf.MONO_VLSB)
         self.init()
 
@@ -108,14 +109,33 @@ class EPD_2in13_V4_Landscape(framebuf.FrameBuffer):
         self.send_data(0x80)
         self.ReadBusy()
 
+    def set_transfer_variant(self, variant):
+        # Diagnostic only: switch byte-transfer order without changing drawing.
+        self.transfer_variant = variant
+
     def _write_landscape_buffer(self, image):
-        # Official Waveshare landscape transfer order.  This is intentionally
-        # kept byte-for-byte compatible with the vendor sample; the failed
-        # software-rotation attempt caused severe twisting on the real panel.
-        for j in range(int(self.width / 8) - 1, -1, -1):
-            base = j * self.height
+        # Variant 0 is the Waveshare official landscape transfer order.
+        # Other variants are for real-panel diagnosis.  The current symptom is
+        # a progressive skew/flow, which is usually a byte order / stride issue.
+        row_bytes = int(self.width / 8)
+        if self.transfer_variant == 0:
+            for j in range(row_bytes - 1, -1, -1):
+                base = j * self.height
+                for i in range(0, self.height):
+                    self.send_data(image[i + base])
+        elif self.transfer_variant == 1:
+            for j in range(0, row_bytes):
+                base = j * self.height
+                for i in range(0, self.height):
+                    self.send_data(image[i + base])
+        elif self.transfer_variant == 2:
             for i in range(0, self.height):
-                self.send_data(image[i + base])
+                for j in range(row_bytes - 1, -1, -1):
+                    self.send_data(image[i + j * self.height])
+        elif self.transfer_variant == 3:
+            for i in range(0, self.height):
+                for j in range(0, row_bytes):
+                    self.send_data(image[i + j * self.height])
 
     def display(self, image=None):
         if image is None:
