@@ -55,9 +55,32 @@ class EPD_2in13_V4_Landscape(framebuf.FrameBuffer):
         self.send_command(0x18); self.send_data(0x80)
         self.ReadBusy()
 
+    def set_window(self):
+        # 物理画面は 122x250。X は 8px 単位なので 128px 分を確保する。
+        self.send_command(0x44)
+        self.send_data(0)
+        self.send_data((self.width - 1) >> 3)
+        self.send_command(0x45)
+        self.send_data(0)
+        self.send_data(0)
+        self.send_data((self.height - 1) & 0xff)
+        self.send_data((self.height - 1) >> 8)
+
+    def set_cursor(self):
+        # RAM 書き込み位置を毎回先頭に戻す。
+        # これをしないと、描画のたびに表示位置が少しずつずれることがある。
+        self.send_command(0x4E)
+        self.send_data(0)
+        self.send_command(0x4F)
+        self.send_data(0)
+        self.send_data(0)
+        self.ReadBusy()
+
     def display(self):
+        self.set_window()
+        self.set_cursor()
         self.send_command(0x24)
-        # サンプルコードにあった Landscape 用の転送ロジック
+        # Landscape 用の転送ロジック。FrameBuffer は 250x128 として扱う。
         for j in range(int(self.width / 8) - 1, -1, -1):
             for i in range(0, self.height):
                 self.send_data(self.buffer[i + j * self.height])
