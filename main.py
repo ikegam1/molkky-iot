@@ -5,6 +5,8 @@ import epaper_driver # 先ほど成功したドライバをインポート
 # 2.13 inch e-paper を横向きで使う時の論理サイズ
 SCREEN_W = 250
 SCREEN_H = 122
+SAFE_X = 4
+SAFE_Y = 4
 FONT_W = 8
 FONT_H = 8
 
@@ -57,7 +59,7 @@ class MolkkyGame:
         return len(str(text)) * FONT_W
 
     def draw_text_center(self, text, y, color=0):
-        self.draw_text_center_in(text, 0, SCREEN_W, y, color)
+        self.draw_text_center_in(text, SAFE_X, SCREEN_W - SAFE_X * 2, y, color)
 
     def draw_text_center_in(self, text, x, w, y, color=0):
         text = str(text)
@@ -131,27 +133,29 @@ class MolkkyGame:
         
         if self.state == 0:
             # まずは標準 8x8 フォントだけを使い、初期画面の文字崩れを避ける。
-            self.draw_text_center("MOLKKY SCORE", 16, 0)
-            self.draw_text_center("BOARD", 30, 0)
-            self.draw_text_center(f"Players: [{self.num_players}]", 58, 0)
-            self.draw_text_center("1-4: Set Num", 84, 0)
-            self.draw_text_center("A: Start", 100, 0)
+            self.draw_text_center("MOLKKY SCORE", SAFE_Y + 12, 0)
+            self.draw_text_center("BOARD", SAFE_Y + 26, 0)
+            self.draw_text_center(f"Players: [{self.num_players}]", SAFE_Y + 54, 0)
+            self.draw_text_center("1-4: Set Num", SAFE_Y + 80, 0)
+            self.draw_text_center("A: Start", SAFE_Y + 96, 0)
         else:
             p = self.players[self.cur_idx]
-            self.epd.fill_rect(0, 0, SCREEN_W, 15, 0) # 黒ヘッダー
-            self.draw_text_center(f"Turn: {p['name']}", 4, 0xff)
-            self.draw_text_center(self.msg, 112, 0)
+            self.epd.fill_rect(SAFE_X, SAFE_Y, SCREEN_W - SAFE_X * 2, 15, 0) # 黒ヘッダー
+            self.draw_text_center(f"Turn: {p['name']}", SAFE_Y + 4, 0xff)
+            self.draw_text_center(self.msg, 110, 0)
 
             # 2人対戦では両者の点数を大きく左右に表示する。
             # 3-4人では2x2グリッドに収める。
             if self.num_players <= 2:
+                card_w = (SCREEN_W - SAFE_X * 2) // 2
                 for i, pl in enumerate(self.players):
-                    self.draw_player_card(pl, i * 125, 22, 125, 80, 6)
+                    self.draw_player_card(pl, SAFE_X + i * card_w, 26, card_w, 78, 6)
             else:
+                card_w = (SCREEN_W - SAFE_X * 2) // 2
                 for i, pl in enumerate(self.players):
-                    x = 0 if i % 2 == 0 else 125
-                    y = 20 if i < 2 else 66
-                    self.draw_player_card(pl, x, y, 125, 42, 4)
+                    x = SAFE_X if i % 2 == 0 else SAFE_X + card_w
+                    y = 24 if i < 2 else 68
+                    self.draw_player_card(pl, x, y, card_w, 40, 4)
 
         self.epd.display()
 
