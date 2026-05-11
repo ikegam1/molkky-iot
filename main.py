@@ -12,10 +12,18 @@ SCREEN_H = 176
 # ==========================================
 # Row(行)を出力、Col(列)を入力(Pull-down)に設定
 ROW_PINS = [0, 1, 2, 3]
+
+# Columns. If 4/5/6/0 do not react, the second column line is the issue.
+# Default wiring is GP4, GP5, GP6, GP7.
+# To avoid a bad/noisy GP5 line, move that keypad wire from GP5 to GP14 and
+# change this to: COL_PINS = [4, 14, 6, 7]
 COL_PINS = [4, 5, 6, 7]
+
 rows = [machine.Pin(i, machine.Pin.OUT, value=0) for i in ROW_PINS]
 cols = [machine.Pin(i, machine.Pin.IN, machine.Pin.PULL_DOWN) for i in COL_PINS]
 print("keypad rows GP{} cols GP{}".format(ROW_PINS, COL_PINS))
+if COL_PINS[1] == 5:
+    print("If keys 4/5/6/0 fail, move keypad column-2 from GP5 to GP14 and set COL_PINS=[4,14,6,7]")
 
 KEY_MAP = [
     ["1", "4", "7", "10"],  # A=10pt / 設定画面では Start
