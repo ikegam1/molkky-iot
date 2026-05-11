@@ -42,14 +42,20 @@ def scan_keypad():
     if is_drawing:
         return None
 
+    # Start from a known-low state before each scan.
+    for row_pin in rows:
+        row_pin.value(0)
+
     for r_idx, row_pin in enumerate(rows):
         row_pin.value(1)
-        time.sleep_us(50)
+        # Give the matrix line time to settle.  This helps with the e-paper HAT
+        # and longer keypad wiring.
+        time.sleep_ms(1)
         for c_idx, col_pin in enumerate(cols):
             if col_pin.value() == 1:
                 row_pin.value(0)
                 key = KEY_MAP[r_idx][c_idx]
-                print("key is {}".format(key))
+                print("key is {} row={} col={}".format(key, r_idx, c_idx))
                 return key
         row_pin.value(0)
     return None
@@ -178,8 +184,11 @@ class MolkkyGame:
             else:
                 self.msg = "{} +{}".format(p["name"], s)
 
+        prev_idx = self.cur_idx
         self.next_turn()
-        self.turn_count += 1
+        # Turn count advances only after all players have thrown once.
+        if self.cur_idx <= prev_idx:
+            self.turn_count += 1
         self.redraw()
 
     def undo(self):
@@ -247,8 +256,10 @@ while True:
                 }
                 game.players[game.cur_idx]["score"] = 25
                 game.msg = "Forced 25"
+                prev_idx = game.cur_idx
                 game.next_turn()
-                game.turn_count += 1
+                if game.cur_idx <= prev_idx:
+                    game.turn_count += 1
                 game.redraw()
             elif key == "U":  # Undo
                 game.undo()
