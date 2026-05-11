@@ -1,5 +1,6 @@
 import machine
 import time
+import framebuf
 import epaper_driver  # 2.7inch V2 driver
 
 # Waveshare Pico-ePaper-2.7 V2 landscape logical size
@@ -67,6 +68,26 @@ class MolkkyGame:
         self.cur_idx = 0
         self.history = None  # 1手前のみ保存
         self.msg = "Welcome!"
+        self.turn_count = 1
+
+    def draw_scaled_text(self, text, x, y, scale=4, color=0):
+        text = str(text)
+        src_w = max(1, len(text) * 8)
+        src_h = 8
+        src = bytearray(src_w * src_h // 8)
+        fb = framebuf.FrameBuffer(src, src_w, src_h, framebuf.MONO_VLSB)
+        fb.fill(0)
+        fb.text(text, 0, 0, 1)
+        for py in range(src_h):
+            for px in range(src_w):
+                if fb.pixel(px, py):
+                    self.epd.fill_rect(x + px * scale, y + py * scale, scale, scale, color)
+
+    def draw_scaled_center(self, text, y, scale=4, color=0):
+        text = str(text)
+        w = len(text) * 8 * scale
+        x = max(0, (SCREEN_W - w) // 2)
+        self.draw_scaled_text(text, x, y, scale, color)
 
     def draw(self):
         self.epd.fill(0xff)  # 白
@@ -81,23 +102,29 @@ class MolkkyGame:
         else:
             p = self.players[self.cur_idx]
             self.epd.fill_rect(0, 0, SCREEN_W, 18, 0)  # 黒ヘッダー
-            self.epd.text("Turn: {}".format(p["name"]), 10, 5, 0xff)
+            self.epd.text("Turn:{}  Throw:{}".format(p["name"], self.turn_count), 10, 5, 0xff)
 
-            # プレイヤーリスト表示
+            # 現在プレイヤーのスコアを大きく中央表示（pt表記なし）
+            score_text = "OUT" if p["out"] else str(p["score"])
+            scale = 5 if len(score_text) <= 2 else 3
+            self.draw_scaled_center(score_text, 26, scale, 0)
+
+            self.epd.text(self.msg, 10, 74, 0)
+
+            # プレイヤーリスト表示（pt表記なし）
             for i, pl in enumerate(self.players):
                 x = 10 if i < 2 else 140
-                y = 30 + (i % 2) * 45
+                y = 94 + (i % 2) * 26
                 mark = ">" if i == self.cur_idx else " "
-                status = "OUT" if pl["out"] else "{}pt".format(pl["score"])
+                status = "OUT" if pl["out"] else str(pl["score"])
                 self.epd.text("{}{}: {}".format(mark, pl["name"], status), x, y, 0)
                 miss = "X" * pl["miss"]
                 if miss == "":
                     miss = "-"
-                self.epd.text(" M:{} S:{}".format(miss, pl["sets"]), x, y + 15, 0)
+                self.epd.text(" M:{} S:{}".format(miss, pl["sets"]), x, y + 13, 0)
 
-            self.epd.text(self.msg, 10, 125, 0)
-            self.epd.text("1-12 score 0 miss U undo", 10, 145, 0)
-            self.epd.text("R reset B burst(25)", 10, 160, 0)
+            self.epd.text("1-12 score 0 miss U undo", 10, 150, 0)
+            self.epd.text("R reset B burst(25)", 10, 164, 0)
 
         self.epd.display()
 
@@ -111,12 +138,18 @@ class MolkkyGame:
         ]
         self.state = 1
         self.cur_idx = 0
+        self.turn_count = 1
         self.msg = "Game Start!"
         self.redraw()
 
     def update_score(self, s):
         # Undo用に現状をコピー（簡易版）
-        self.history = {"players": [dict(p) for p in self.players], "cur_idx": self.cur_idx, "msg": self.msg}
+        self.history = {
+            "players": [dict(p) for p in self.players],
+            "cur_idx": self.cur_idx,
+            "msg": self.msg,
+            "turn_count": self.turn_count,
+        }
 
         p = self.players[self.cur_idx]
         if s == 0:
@@ -140,12 +173,14 @@ class MolkkyGame:
                 self.msg = "{} +{}pt".format(p["name"], s)
 
         self.next_turn()
+        self.turn_count += 1
         self.redraw()
 
     def undo(self):
         if self.history:
             self.players = self.history["players"]
             self.cur_idx = self.history["cur_idx"]
+            self.turn_count = self.history.get("turn_count", self.turn_count)
             self.msg = "Undo!"
             self.history = None
             self.redraw()
@@ -196,15 +231,22 @@ while True:
             if key.isdigit() or key in ["10", "11", "12"]:
                 game.update_score(int(key))
             elif key == "B":  # Burst
-                game.history = {"players": [dict(p) for p in game.players], "cur_idx": game.cur_idx, "msg": game.msg}
+                game.history = {
+                    "players": [dict(p) for p in game.players],
+                    "cur_idx": game.cur_idx,
+                    "msg": game.msg,
+                    "turn_count": game.turn_count,
+                }
                 game.players[game.cur_idx]["score"] = 25
-                game.msg = "Forced 25pt"
+                game.msg = "Forced 25"
                 game.next_turn()
+                game.turn_count += 1
                 game.redraw()
             elif key == "U":  # Undo
                 game.undo()
             elif key == "R":  # 全リセット
                 game.state = 0
+                game.turn_count = 1
                 game.redraw()
 
         time.sleep(0.3)  # チャタリング防止
