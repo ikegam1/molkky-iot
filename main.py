@@ -15,9 +15,9 @@ KEY_PINS = [15, 17, 2, 3]  # KEY1, KEY2, KEY3, KEY4
 LONG_PRESS_MS = 800
 DEBOUNCE_MS = 40
 
-# Rev2.2 のKEYは active-high の可能性が高いため PULL_DOWN で読む。
-KEY_PRESSED_VALUE = 1
-keys = [machine.Pin(pin, machine.Pin.IN, machine.Pin.PULL_DOWN) for pin in KEY_PINS]
+# Pico-ePaper-2.7 標準アサイン: PULL_UP / 押されると 0。
+KEY_PRESSED_VALUE = 0
+keys = [machine.Pin(pin, machine.Pin.IN, machine.Pin.PULL_UP) for pin in KEY_PINS]
 
 active_key = None
 press_started_at = 0
@@ -50,6 +50,7 @@ def scan_buttons():
             active_key = pressed
             press_started_at = now
             last_event_at = now
+            print("Key {} Pressed!".format(active_key + 1))
             print("KEY{} down".format(active_key + 1))
         return None
 
