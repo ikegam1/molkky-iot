@@ -10,7 +10,10 @@ except Exception:
 for _ in range(5):
     led.value(1); time.sleep(0.1)
     led.value(0); time.sleep(0.1)
-led.value(1) # Keep ON during init
+
+# Power stabilization delay
+time.sleep(2)
+led.value(1) # Solid ON during EPD initialization
 
 import time
 import framebuf
