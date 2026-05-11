@@ -11,8 +11,11 @@ SCREEN_H = 176
 # 1. キーパッド設定 (GPIO 0-7)
 # ==========================================
 # Row(行)を出力、Col(列)を入力(Pull-down)に設定
-rows = [machine.Pin(i, machine.Pin.OUT, value=0) for i in range(4)]
-cols = [machine.Pin(i, machine.Pin.IN, machine.Pin.PULL_DOWN) for i in range(4, 8)]
+ROW_PINS = [0, 1, 2, 3]
+COL_PINS = [4, 5, 6, 7]
+rows = [machine.Pin(i, machine.Pin.OUT, value=0) for i in ROW_PINS]
+cols = [machine.Pin(i, machine.Pin.IN, machine.Pin.PULL_DOWN) for i in COL_PINS]
+print("keypad rows GP{} cols GP{}".format(ROW_PINS, COL_PINS))
 
 KEY_MAP = [
     ["1", "4", "7", "10"],  # A=10pt / 設定画面では Start
@@ -55,7 +58,9 @@ def scan_keypad():
             if col_pin.value() == 1:
                 row_pin.value(0)
                 key = KEY_MAP[r_idx][c_idx]
-                print("key is {} row={} col={} normal".format(key, r_idx, c_idx))
+                print("key is {} row={} GP{} col={} GP{} normal".format(
+                    key, r_idx, ROW_PINS[r_idx], c_idx, COL_PINS[c_idx]
+                ))
                 return key
         row_pin.value(0)
 
@@ -72,7 +77,9 @@ def scan_keypad():
                 col_pin.value(0)
                 keypad_wake()
                 key = KEY_MAP[r_idx][c_idx]
-                print("key is {} row={} col={} reverse".format(key, r_idx, c_idx))
+                print("key is {} row={} GP{} col={} GP{} reverse".format(
+                    key, r_idx, ROW_PINS[r_idx], c_idx, COL_PINS[c_idx]
+                ))
                 return key
         col_pin.value(0)
         col_pin.init(mode=machine.Pin.IN, pull=machine.Pin.PULL_DOWN)
