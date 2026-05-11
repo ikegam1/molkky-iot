@@ -177,13 +177,20 @@ class EPD_2in7_V2_Landscape:
         self.send_command(0x12)  # SWRESET
         self.ReadBusy()
 
-        self.send_command(0x45)  # RAM-Y start/end: 0..263
+        # Added explicit RAM address boundaries (from sample's 4Gray/V2 logic)
+        self.send_command(0x44)  # RAM-X start/end
+        self.send_data(0x00)
+        self.send_data(0x15)     # 22 bytes
+
+        self.send_command(0x45)  # RAM-Y start/end
         self.send_data(0x00)
         self.send_data(0x00)
         self.send_data(0x07)
-        self.send_data(0x01)
+        self.send_data(0x01)     # 264 lines
 
-        self.send_command(0x4F)  # RAM-Y counter = 0
+        self.send_command(0x4E)  # RAM-X counter
+        self.send_data(0x00)
+        self.send_command(0x4F)  # RAM-Y counter
         self.send_data(0x00)
         self.send_data(0x00)
 
@@ -231,7 +238,10 @@ class EPD_2in7_V2_Landscape:
     def clear(self):
         width_bytes = self.native_width // 8
         height = self.native_height
+        # Initialize both RAM areas to White
         self.send_command(0x24)
+        self.send_data_buffer([0xFF] * width_bytes * height)
+        self.send_command(0x26)
         self.send_data_buffer([0xFF] * width_bytes * height)
         self.TurnOnDisplay()
 
