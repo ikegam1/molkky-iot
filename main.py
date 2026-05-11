@@ -1,5 +1,18 @@
 import machine
 import time
+
+# Boot diagnostics: Blink LED 5 times to confirm main.py is running
+try:
+    led = machine.Pin("LED", machine.Pin.OUT)
+except Exception:
+    led = machine.Pin(25, machine.Pin.OUT)
+
+for _ in range(5):
+    led.value(1); time.sleep(0.1)
+    led.value(0); time.sleep(0.1)
+led.value(1) # Keep ON during init
+
+import time
 import framebuf
 import epaper_driver  # 2.7inch V2 driver
 
