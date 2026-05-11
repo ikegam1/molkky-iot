@@ -4,8 +4,8 @@ import epaper_driver
 
 # Rect-only UI.
 # The panel renders fill_rect blocks well, while text/thin lines skew badly.
-SCREEN_W = 122
-SCREEN_H = 250
+SCREEN_W = 264
+SCREEN_H = 176
 SAFE_X = 8
 SAFE_Y = 8
 
@@ -56,7 +56,7 @@ class MolkkyGame:
     }
 
     def __init__(self):
-        self.epd = epaper_driver.EPD_2in13_V4_Landscape()
+        self.epd = epaper_driver.EPD_2in7_V2_Landscape()
         self.epd.Clear()
         self.state = 0
         self.num_players = 2
@@ -79,8 +79,8 @@ class MolkkyGame:
             self.draw_pattern(self.DIGITS.get(ch, self.DIGITS["0"]), cx, y, unit)
             cx += 4 * unit
 
-    def draw_number_center(self, value, y, unit):
-        x = max(SAFE_X, (SCREEN_W - self.block_width(value, unit)) // 2)
+    def draw_number_center(self, value, y, unit, x0=0, width=SCREEN_W):
+        x = max(x0 + SAFE_X, x0 + (width - self.block_width(value, unit)) // 2)
         self.draw_number(value, x, y, unit)
 
     def draw_letters(self, text, x, y, unit):
@@ -90,27 +90,27 @@ class MolkkyGame:
                 self.draw_pattern(self.LETTERS[ch], cx, y, unit)
             cx += 4 * unit
 
-    def draw_player(self, index, y):
+    def draw_player(self, index, x, y, width):
         pl = self.players[index]
         # Current player marker: solid block on the left.
         if index == self.cur_idx:
-            self.epd.fill_rect(SAFE_X, y + 6, 10, 18, 0)
-        self.draw_letters("P", SAFE_X + 18, y, 4)
-        self.draw_number(index + 1, SAFE_X + 36, y, 4)
+            self.epd.fill_rect(x + SAFE_X, y + 6, 10, 18, 0)
+        self.draw_letters("P", x + SAFE_X + 18, y, 4)
+        self.draw_number(index + 1, x + SAFE_X + 36, y, 4)
         if pl["out"]:
-            self.draw_letters("OUT", SAFE_X + 18, y + 32, 5)
+            self.draw_letters("OUT", x + SAFE_X + 18, y + 34, 5)
         else:
-            self.draw_number_center(pl["score"], y + 34, 9)
+            self.draw_number_center(pl["score"], y + 42, 9, x, width)
 
     def draw_setup(self):
         # SET + large player count. No text(), only block letters/numbers.
-        self.draw_letters("SET", SAFE_X + 10, 18, 5)
-        self.draw_number_center(self.num_players, 70, 13)
+        self.draw_letters("SET", SAFE_X + 18, 18, 5)
+        self.draw_number_center(self.num_players, 58, 13)
         # Four small bottom blocks means: press 1-4 to select players.
         for i in range(4):
-            self.epd.fill_rect(SAFE_X + i * 24, 190, 14, 14, 0)
+            self.epd.fill_rect(SAFE_X + 36 + i * 42, 134, 20, 20, 0)
         # Start hint: one wide block near bottom means A/start.
-        self.epd.fill_rect(SAFE_X + 20, 220, 70, 12, 0)
+        self.epd.fill_rect(SAFE_X + 72, 158, 110, 10, 0)
 
     def draw(self):
         self.epd.fill(0xff)
@@ -118,11 +118,11 @@ class MolkkyGame:
             self.draw_setup()
         else:
             if self.num_players <= 2:
-                self.draw_player(0, 12)
+                self.draw_player(0, 0, 28, SCREEN_W // 2)
                 if len(self.players) > 1:
-                    self.draw_player(1, 126)
+                    self.draw_player(1, SCREEN_W // 2, 28, SCREEN_W // 2)
             else:
-                self.draw_player(self.cur_idx, 50)
+                self.draw_player(self.cur_idx, 50, 42, 164)
         self.epd.display()
 
     def start_game(self):
