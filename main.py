@@ -2,7 +2,10 @@ import machine
 import time
 import epaper_driver
 
-led = machine.Pin("LED", machine.Pin.OUT)
+try:
+    led = machine.Pin("LED", machine.Pin.OUT)
+except Exception:
+    led = machine.Pin(25, machine.Pin.OUT)
 led.value(1)
 print("molkky-iot boot")
 
