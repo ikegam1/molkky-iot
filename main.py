@@ -1,26 +1,23 @@
 import machine
 import time
-import framebuf
-import epaper_driver
+import epaper_driver  # 2.7inch V2 driver
 
 # Waveshare Pico-ePaper-2.7 V2 landscape logical size
 SCREEN_W = 264
 SCREEN_H = 176
-FONT_W = 8
-FONT_H = 8
 
 # ==========================================
-# 1. Keypad settings (GPIO 0-7)
+# 1. キーパッド設定 (GPIO 0-7)
 # ==========================================
-# Rows are output, columns are input with pull-down.
+# Row(行)を出力、Col(列)を入力(Pull-down)に設定
 rows = [machine.Pin(i, machine.Pin.OUT) for i in range(4)]
 cols = [machine.Pin(i, machine.Pin.IN, machine.Pin.PULL_DOWN) for i in range(4, 8)]
 
 KEY_MAP = [
-    ["1", "4", "7", "10"],  # A = 10pt / Start on setup screen
-    ["2", "5", "8", "11"],  # B = 11pt
-    ["3", "6", "9", "12"],  # C = 12pt
-    ["U", "0", "R", "B"],   # D row: Undo, Miss(0), Reset, Burst(25)
+    ["1", "2", "3", "10"],  # A=10pt / 設定画面では Start
+    ["4", "5", "6", "11"],  # B=11pt
+    ["7", "8", "9", "12"],  # C=12pt
+    ["U", "0", "R", "B"],   # U=Undo, 0=Miss, R=Reset, B=Burst(25)
 ]
 
 
@@ -36,97 +33,52 @@ def scan_keypad():
 
 
 # ==========================================
-# 2. Game class
+# 2. ゲーム管理クラス
 # ==========================================
 class MolkkyGame:
     def __init__(self):
+        # Landscapeモード(横向き)を使用
+        # 互換aliasもありますが、2.7inch V2用クラスを明示します。
         self.epd = epaper_driver.EPD_2in7_V2_Landscape()
         self.epd.Clear()
-        self.state = 0  # 0: setup, 1: playing
+        self.state = 0  # 0:設定, 1:試合中
         self.num_players = 2
         self.players = []
         self.cur_idx = 0
-        self.history = None
+        self.history = None  # 1手前のみ保存
         self.msg = "Welcome!"
 
-    def text_width(self, text, scale=1):
-        return len(str(text)) * FONT_W * scale
-
-    def draw_text_center(self, text, y, color=0, scale=1):
-        text = str(text)
-        x = max(0, (SCREEN_W - self.text_width(text, scale)) // 2)
-        if scale == 1:
-            self.epd.text(text, x, y, color)
-        else:
-            self.draw_scaled_text(text, x, y, scale, color)
-
-    def draw_text_fit(self, text, x, y, max_w, color=0):
-        text = str(text)
-        max_chars = max_w // FONT_W
-        if len(text) > max_chars:
-            text = text[:max(0, max_chars - 1)] + "."
-        self.epd.text(text, x, y, color)
-
-    def draw_scaled_text(self, text, x, y, scale=2, color=0):
-        # framebuf.text is fixed 8x8, so draw to a temporary buffer and scale it.
-        text = str(text)
-        src_w = max(1, len(text) * FONT_W)
-        src_h = FONT_H
-        src = bytearray(src_w * src_h // 8)
-        fb = framebuf.FrameBuffer(src, src_w, src_h, framebuf.MONO_VLSB)
-        fb.fill(0)
-        fb.text(text, 0, 0, 1)
-        for py in range(src_h):
-            for px in range(src_w):
-                if fb.pixel(px, py):
-                    self.epd.fill_rect(x + px * scale, y + py * scale, scale, scale, color)
-
-    def draw_header(self, title):
-        self.epd.fill_rect(0, 0, SCREEN_W, 18, 0)
-        self.draw_text_center(title, 5, 0xFF)
-
-    def draw_setup(self):
-        self.draw_text_center("MOLKKY", 12, 0, 3)
-        self.draw_text_center("SCOREBOARD", 42, 0, 2)
-        self.draw_text_center("Players: [{}]".format(self.num_players), 72, 0)
-
-        self.epd.hline(18, 92, SCREEN_W - 36, 0)
-        self.draw_text_center("1-4 : Set players", 102, 0)
-        self.draw_text_center("A/10: Start game", 118, 0)
-        self.draw_text_center("During game: 1-12 score", 138, 0)
-        self.draw_text_center("0 miss  U undo  R reset  B burst", 154, 0)
-
-    def draw_scoreboard(self):
-        p = self.players[self.cur_idx]
-        self.draw_header("Turn: {}".format(p["name"]))
-
-        score_text = "OUT" if p["out"] else str(p["score"])
-        scale = 5 if len(score_text) <= 2 else 3
-        self.draw_text_center(score_text, 30, 0, scale)
-        if not p["out"]:
-            self.draw_text_center("POINTS", 72, 0)
-        self.draw_text_center(self.msg, 90, 0)
-
-        # Bottom help line
-        self.epd.hline(0, 108, SCREEN_W, 0)
-        self.draw_text_center("Input: 1-12 / 0=miss / U=undo", 114, 0)
-
-        # Player summary, up to 4 players in two columns.
-        for i, pl in enumerate(self.players):
-            x = 4 if i < 2 else 136
-            y = 132 + (i % 2) * 18
-            mark = ">" if i == self.cur_idx else " "
-            status = "OUT" if pl["out"] else "{}pt".format(pl["score"])
-            miss = "X" * pl["miss"] or "-"
-            line = "{}{} {} M:{} S:{}".format(mark, pl["name"], status, miss, pl["sets"])
-            self.draw_text_fit(line, x, y, 124, 0)
-
     def draw(self):
-        self.epd.fill(0xFF)
+        self.epd.fill(0xff)  # 白
+
         if self.state == 0:
-            self.draw_setup()
+            self.epd.text("MOLKKY SCOREBOARD", 10, 10, 0)
+            self.epd.text("Players: [{}]".format(self.num_players), 10, 40, 0)
+            self.epd.text("1-4:Set Num", 10, 70, 0)
+            self.epd.text("A/10:Start", 10, 88, 0)
+            self.epd.text("Game: 1-12=Score", 10, 124, 0)
+            self.epd.text("0=Miss U=Undo R=Reset B=25", 10, 142, 0)
         else:
-            self.draw_scoreboard()
+            p = self.players[self.cur_idx]
+            self.epd.fill_rect(0, 0, SCREEN_W, 18, 0)  # 黒ヘッダー
+            self.epd.text("Turn: {}".format(p["name"]), 10, 5, 0xff)
+
+            # プレイヤーリスト表示
+            for i, pl in enumerate(self.players):
+                x = 10 if i < 2 else 140
+                y = 30 + (i % 2) * 45
+                mark = ">" if i == self.cur_idx else " "
+                status = "OUT" if pl["out"] else "{}pt".format(pl["score"])
+                self.epd.text("{}{}: {}".format(mark, pl["name"], status), x, y, 0)
+                miss = "X" * pl["miss"]
+                if miss == "":
+                    miss = "-"
+                self.epd.text(" M:{} S:{}".format(miss, pl["sets"]), x, y + 15, 0)
+
+            self.epd.text(self.msg, 10, 125, 0)
+            self.epd.text("1-12 score 0 miss U undo", 10, 145, 0)
+            self.epd.text("R reset B burst(25)", 10, 160, 0)
+
         self.epd.display()
 
     def start_game(self):
@@ -136,12 +88,13 @@ class MolkkyGame:
         ]
         self.state = 1
         self.cur_idx = 0
-        self.history = None
         self.msg = "Game Start!"
         self.draw()
 
     def update_score(self, s):
+        # Undo用に現状をコピー（簡易版）
         self.history = {"players": [dict(p) for p in self.players], "cur_idx": self.cur_idx, "msg": self.msg}
+
         p = self.players[self.cur_idx]
         if s == 0:
             p["miss"] += 1
@@ -149,19 +102,20 @@ class MolkkyGame:
                 p["out"] = True
                 self.msg = "{} is OUT!".format(p["name"])
             else:
-                self.msg = "{} miss".format(p["name"])
+                self.msg = "{} Miss".format(p["name"])
         else:
             p["miss"] = 0
             p["score"] += s
             if p["score"] == 50:
                 p["sets"] += 1
                 self.msg = "{} Win Set!".format(p["name"])
-                self.reset_scores()
+                self.reset_scores()  # 全員0点に戻して次のセットへ
             elif p["score"] > 50:
                 p["score"] = 25
                 self.msg = "Over 50! Back to 25"
             else:
                 self.msg = "{} +{}pt".format(p["name"], s)
+
         self.next_turn()
         self.draw()
 
@@ -187,7 +141,7 @@ class MolkkyGame:
 
 
 # ==========================================
-# 3. Main loop
+# 3. メインループ
 # ==========================================
 game = MolkkyGame()
 game.draw()
@@ -201,23 +155,24 @@ while True:
             if key in ["1", "2", "3", "4"]:
                 game.num_players = int(key)
                 game.draw()
-            elif key == "10":
+            elif key == "10":  # Aボタンで開始
                 game.start_game()
+
         elif game.state == 1:
             if key.isdigit() or key in ["10", "11", "12"]:
                 game.update_score(int(key))
-            elif key == "B":
+            elif key == "B":  # Burst
                 game.history = {"players": [dict(p) for p in game.players], "cur_idx": game.cur_idx, "msg": game.msg}
                 game.players[game.cur_idx]["score"] = 25
                 game.msg = "Forced 25pt"
                 game.next_turn()
                 game.draw()
-            elif key == "U":
+            elif key == "U":  # Undo
                 game.undo()
-            elif key == "R":
+            elif key == "R":  # 全リセット
                 game.state = 0
-                game.msg = "Reset"
                 game.draw()
-        time.sleep(0.3)
+
+        time.sleep(0.3)  # チャタリング防止
     last_key = key
     time.sleep(0.05)
