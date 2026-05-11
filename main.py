@@ -15,9 +15,9 @@ rows = [machine.Pin(i, machine.Pin.OUT, value=0) for i in range(4)]
 cols = [machine.Pin(i, machine.Pin.IN, machine.Pin.PULL_DOWN) for i in range(4, 8)]
 
 KEY_MAP = [
-    ["1", "2", "3", "10"],  # A=10pt / 設定画面では Start
-    ["4", "5", "6", "11"],  # B=11pt
-    ["7", "8", "9", "12"],  # C=12pt
+    ["1", "4", "7", "10"],  # A=10pt / 設定画面では Start
+    ["2", "5", "8", "11"],  # B=11pt
+    ["3", "6", "9", "12"],  # C=12pt
     ["U", "0", "R", "B"],   # U=Undo, 0=Miss, R=Reset, B=Burst(25)
 ]
 
@@ -42,7 +42,7 @@ def scan_keypad():
     if is_drawing:
         return None
 
-    # Start from a known-low state before each scan.
+    # Normal scan: drive rows, read columns.
     for row_pin in rows:
         row_pin.value(0)
 
@@ -55,9 +55,29 @@ def scan_keypad():
             if col_pin.value() == 1:
                 row_pin.value(0)
                 key = KEY_MAP[r_idx][c_idx]
-                print("key is {} row={} col={}".format(key, r_idx, c_idx))
+                print("key is {} row={} col={} normal".format(key, r_idx, c_idx))
                 return key
         row_pin.value(0)
+
+    # Fallback scan: drive columns, read rows.
+    # If one column input (notably GP5 for 4/5/6/0) is weak or not read reliably,
+    # this can still detect the key by reading the row side instead.
+    for p in rows + cols:
+        p.init(mode=machine.Pin.IN, pull=machine.Pin.PULL_DOWN)
+    for c_idx, col_pin in enumerate(cols):
+        col_pin.init(mode=machine.Pin.OUT, value=1)
+        time.sleep_ms(1)
+        for r_idx, row_pin in enumerate(rows):
+            if row_pin.value() == 1:
+                col_pin.value(0)
+                keypad_wake()
+                key = KEY_MAP[r_idx][c_idx]
+                print("key is {} row={} col={} reverse".format(key, r_idx, c_idx))
+                return key
+        col_pin.value(0)
+        col_pin.init(mode=machine.Pin.IN, pull=machine.Pin.PULL_DOWN)
+
+    keypad_wake()
     return None
 
 
