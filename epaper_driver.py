@@ -35,6 +35,13 @@ LUT_DATA_4GRAY = [
 ]
 
 
+def _reverse_byte(value):
+    value = ((value & 0xF0) >> 4) | ((value & 0x0F) << 4)
+    value = ((value & 0xCC) >> 2) | ((value & 0x33) << 2)
+    value = ((value & 0xAA) >> 1) | ((value & 0x55) << 1)
+    return value
+
+
 class EPD_2in7_V2_Landscape:
     """FrameBuffer-compatible wrapper around Waveshare's 2.7_V2 driver.
 
@@ -240,10 +247,14 @@ class EPD_2in7_V2_Landscape:
         width_bytes = self.native_width // 8  # 22
         height = self.native_height          # 264
         self.send_command(0x24)
-        # Exact landscape transfer formula from the working Waveshare V2 sample.
+        # Exact landscape transfer formula from the working Waveshare V2 sample,
+        # plus 180-degree rotation so the KEY buttons are on the right side.
         for j in range(height):
+            src_x = height - 1 - j
             for i in range(width_bytes):
-                self.send_data(image[(21 - i) * height + j])
+                # Original formula uses byte row (21-i). For 180-degree rotation
+                # use the opposite byte row and reverse bit order within the byte.
+                self.send_data(_reverse_byte(image[i * height + src_x]))
         self.TurnOnDisplay()
 
     def display_Fast(self, image=None):

@@ -9,31 +9,39 @@ SCREEN_H = 176
 # ==========================================
 # 1. 基板上KEY設定
 # ==========================================
-# Waveshare Pico-ePaper系の4キー想定:
-# KEY1=GP15, KEY2=GP17, KEY3=GP2, KEY4=GP3
-# もし反応するボタン順が違う場合は、この配列だけ入れ替えてください。
-KEY_PINS = [15, 17, 2, 3]
+# Waveshare Pico-ePaper系の4キー想定。写真上の印字は上から KEY4,KEY3,KEY2,KEY1。
+# 反応しない/順番が違う場合は、この配列だけ調整してください。
+KEY_PINS = [15, 17, 2, 3]  # KEY1, KEY2, KEY3, KEY4
 LONG_PRESS_MS = 800
 DEBOUNCE_MS = 40
 
-keys = [machine.Pin(pin, machine.Pin.IN, machine.Pin.PULL_UP) for pin in KEY_PINS]
+# Rev2.2 のKEYは active-high の可能性が高いため PULL_DOWN で読む。
+KEY_PRESSED_VALUE = 1
+keys = [machine.Pin(pin, machine.Pin.IN, machine.Pin.PULL_DOWN) for pin in KEY_PINS]
 
 active_key = None
 press_started_at = 0
 last_event_at = 0
+last_raw_state = None
+print("KEY debug pins:", KEY_PINS)
 
 
 def scan_buttons():
     """Return (key_index, is_long) on release. key_index is 0..3."""
-    global active_key, press_started_at, last_event_at
+    global active_key, press_started_at, last_event_at, last_raw_state
     now = time.ticks_ms()
+
+    raw = tuple(pin.value() for pin in keys)
+    if raw != last_raw_state:
+        print("KEY raw", raw)
+        last_raw_state = raw
 
     if time.ticks_diff(now, last_event_at) < DEBOUNCE_MS:
         return None
 
     pressed = None
-    for i, pin in enumerate(keys):
-        if pin.value() == 0:  # active low
+    for i, value in enumerate(raw):
+        if value == KEY_PRESSED_VALUE:
             pressed = i
             break
 
@@ -42,6 +50,7 @@ def scan_buttons():
             active_key = pressed
             press_started_at = now
             last_event_at = now
+            print("KEY{} down".format(active_key + 1))
         return None
 
     # Wait until the same key is released, then classify short/long.
@@ -52,7 +61,9 @@ def scan_buttons():
     active_key = None
     last_event_at = now
     duration = time.ticks_diff(now, press_started_at)
-    return released_key, duration >= LONG_PRESS_MS
+    is_long = duration >= LONG_PRESS_MS
+    print("KEY{} up {}ms {}".format(released_key + 1, duration, "long" if is_long else "short"))
+    return released_key, is_long
 
 
 # ==========================================
