@@ -7,64 +7,51 @@ SCREEN_W = 264
 SCREEN_H = 176
 
 # ==========================================
-# 1. 基板上KEY設定
+# 1. キーパッド設定 (GPIO 0-7)
 # ==========================================
-# Waveshare Pico-ePaper系の4キー想定。写真上の印字は上から KEY4,KEY3,KEY2,KEY1。
-# 反応しない/順番が違う場合は、この配列だけ調整してください。
-KEY_PINS = [15, 17, 2, 3]  # KEY1, KEY2, KEY3, KEY4
-LONG_PRESS_MS = 800
-DEBOUNCE_MS = 40
+# Row(行)を出力、Col(列)を入力(Pull-down)に設定
+rows = [machine.Pin(i, machine.Pin.OUT, value=0) for i in range(4)]
+cols = [machine.Pin(i, machine.Pin.IN, machine.Pin.PULL_DOWN) for i in range(4, 8)]
 
-# Pico-ePaper-2.7 標準アサイン: PULL_UP / 押されると 0。
-KEY_PRESSED_VALUE = 0
-keys = [machine.Pin(pin, machine.Pin.IN, machine.Pin.PULL_UP) for pin in KEY_PINS]
+KEY_MAP = [
+    ["1", "2", "3", "10"],  # A=10pt / 設定画面では Start
+    ["4", "5", "6", "11"],  # B=11pt
+    ["7", "8", "9", "12"],  # C=12pt
+    ["U", "0", "R", "B"],   # U=Undo, 0=Miss, R=Reset, B=Burst(25)
+]
 
-active_key = None
-press_started_at = 0
-last_event_at = 0
-last_raw_state = None
-print("KEY debug pins:", KEY_PINS)
+is_drawing = False
 
 
-def scan_buttons():
-    """Return (key_index, is_long) on release. key_index is 0..3."""
-    global active_key, press_started_at, last_event_at, last_raw_state
-    now = time.ticks_ms()
+def keypad_sleep():
+    # 描画中の電流/ノイズ干渉を避けるため、GPIO0-7を一時的に高インピーダンス化。
+    for p in rows + cols:
+        p.init(mode=machine.Pin.IN)
 
-    raw = tuple(pin.value() for pin in keys)
-    if raw != last_raw_state:
-        print("KEY raw", raw)
-        last_raw_state = raw
 
-    if time.ticks_diff(now, last_event_at) < DEBOUNCE_MS:
+def keypad_wake():
+    # キーパッドスキャン用のGPIO設定に戻す。
+    for p in rows:
+        p.init(mode=machine.Pin.OUT, value=0)
+    for p in cols:
+        p.init(mode=machine.Pin.IN, pull=machine.Pin.PULL_DOWN)
+
+
+def scan_keypad():
+    if is_drawing:
         return None
 
-    pressed = None
-    for i, value in enumerate(raw):
-        if value == KEY_PRESSED_VALUE:
-            pressed = i
-            break
-
-    if active_key is None:
-        if pressed is not None:
-            active_key = pressed
-            press_started_at = now
-            last_event_at = now
-            print("Key {} Pressed!".format(active_key + 1))
-            print("KEY{} down".format(active_key + 1))
-        return None
-
-    # Wait until the same key is released, then classify short/long.
-    if pressed == active_key:
-        return None
-
-    released_key = active_key
-    active_key = None
-    last_event_at = now
-    duration = time.ticks_diff(now, press_started_at)
-    is_long = duration >= LONG_PRESS_MS
-    print("KEY{} up {}ms {}".format(released_key + 1, duration, "long" if is_long else "short"))
-    return released_key, is_long
+    for r_idx, row_pin in enumerate(rows):
+        row_pin.value(1)
+        time.sleep_us(50)
+        for c_idx, col_pin in enumerate(cols):
+            if col_pin.value() == 1:
+                row_pin.value(0)
+                key = KEY_MAP[r_idx][c_idx]
+                print("key is {}".format(key))
+                return key
+        row_pin.value(0)
+    return None
 
 
 # ==========================================
@@ -80,7 +67,6 @@ class MolkkyGame:
         self.cur_idx = 0
         self.history = None  # 1手前のみ保存
         self.msg = "Welcome!"
-        self.input_score = 0
 
     def draw(self):
         self.epd.fill(0xff)  # 白
@@ -88,25 +74,19 @@ class MolkkyGame:
         if self.state == 0:
             self.epd.text("MOLKKY SCOREBOARD", 10, 10, 0)
             self.epd.text("Players: [{}]".format(self.num_players), 10, 40, 0)
-            self.epd.text("KEY1:+1   KEY2:-1", 10, 75, 0)
-            self.epd.text("KEY3:Start", 10, 93, 0)
-            self.epd.text("KEY4 long:Reset", 10, 111, 0)
-            self.epd.text("During game:", 10, 140, 0)
-            self.epd.text("K1/K2 score K3 OK K4 Undo", 10, 158, 0)
+            self.epd.text("1-4:Set Num", 10, 70, 0)
+            self.epd.text("A/10:Start", 10, 88, 0)
+            self.epd.text("Game: 1-12=Score", 10, 124, 0)
+            self.epd.text("0=Miss U=Undo R=Reset B=25", 10, 142, 0)
         else:
             p = self.players[self.cur_idx]
             self.epd.fill_rect(0, 0, SCREEN_W, 18, 0)  # 黒ヘッダー
             self.epd.text("Turn: {}".format(p["name"]), 10, 5, 0xff)
 
-            self.epd.text("Input: [{}]".format(self.input_score), 10, 25, 0)
-            self.epd.text("K1 +1/+10  K2 -1/-10", 10, 43, 0)
-            self.epd.text("K3 OK / long=0pt", 10, 61, 0)
-            self.epd.text("K4 Undo / long=Reset", 10, 79, 0)
-
             # プレイヤーリスト表示
             for i, pl in enumerate(self.players):
                 x = 10 if i < 2 else 140
-                y = 104 + (i % 2) * 30
+                y = 30 + (i % 2) * 45
                 mark = ">" if i == self.cur_idx else " "
                 status = "OUT" if pl["out"] else "{}pt".format(pl["score"])
                 self.epd.text("{}{}: {}".format(mark, pl["name"], status), x, y, 0)
@@ -115,27 +95,14 @@ class MolkkyGame:
                     miss = "-"
                 self.epd.text(" M:{} S:{}".format(miss, pl["sets"]), x, y + 15, 0)
 
-            self.epd.text(self.msg, 10, 164, 0)
+            self.epd.text(self.msg, 10, 125, 0)
+            self.epd.text("1-12 score 0 miss U undo", 10, 145, 0)
+            self.epd.text("R reset B burst(25)", 10, 160, 0)
 
         self.epd.display()
 
-    def change_players(self, delta):
-        self.num_players += delta
-        if self.num_players < 1:
-            self.num_players = 1
-        if self.num_players > 4:
-            self.num_players = 4
-        self.msg = "Players: {}".format(self.num_players)
-        self.draw()
-
-    def change_input_score(self, delta):
-        self.input_score += delta
-        if self.input_score < 0:
-            self.input_score = 0
-        if self.input_score > 12:
-            self.input_score = 12
-        self.msg = "Input {}".format(self.input_score)
-        self.draw()
+    def redraw(self):
+        update_display_safe(self)
 
     def start_game(self):
         self.players = [
@@ -144,19 +111,12 @@ class MolkkyGame:
         ]
         self.state = 1
         self.cur_idx = 0
-        self.history = None
-        self.input_score = 0
         self.msg = "Game Start!"
-        self.draw()
+        self.redraw()
 
     def update_score(self, s):
         # Undo用に現状をコピー（簡易版）
-        self.history = {
-            "players": [dict(p) for p in self.players],
-            "cur_idx": self.cur_idx,
-            "msg": self.msg,
-            "input_score": self.input_score,
-        }
+        self.history = {"players": [dict(p) for p in self.players], "cur_idx": self.cur_idx, "msg": self.msg}
 
         p = self.players[self.cur_idx]
         if s == 0:
@@ -179,27 +139,16 @@ class MolkkyGame:
             else:
                 self.msg = "{} +{}pt".format(p["name"], s)
 
-        self.input_score = 0
         self.next_turn()
-        self.draw()
+        self.redraw()
 
     def undo(self):
         if self.history:
             self.players = self.history["players"]
             self.cur_idx = self.history["cur_idx"]
-            self.input_score = self.history.get("input_score", 0)
             self.msg = "Undo!"
             self.history = None
-            self.draw()
-
-    def reset_to_setup(self):
-        self.state = 0
-        self.players = []
-        self.cur_idx = 0
-        self.history = None
-        self.input_score = 0
-        self.msg = "Reset"
-        self.draw()
+            self.redraw()
 
     def reset_scores(self):
         for p in self.players:
@@ -213,49 +162,51 @@ class MolkkyGame:
             if not self.players[self.cur_idx]["out"]:
                 break
 
-    def handle_button(self, key_index, is_long):
-        # KEY1: +1 / long +10
-        if key_index == 0:
-            if self.state == 0:
-                self.change_players(1 if not is_long else 2)
-            else:
-                self.change_input_score(10 if is_long else 1)
 
-        # KEY2: -1 / long -10
-        elif key_index == 1:
-            if self.state == 0:
-                self.change_players(-1 if not is_long else -2)
-            else:
-                self.change_input_score(-10 if is_long else -1)
-
-        # KEY3: OK / long 0pt
-        elif key_index == 2:
-            if self.state == 0:
-                self.start_game()
-            else:
-                if is_long:
-                    self.update_score(0)
-                else:
-                    self.update_score(self.input_score)
-
-        # KEY4: Undo / long Reset
-        elif key_index == 3:
-            if is_long:
-                self.reset_to_setup()
-            elif self.state == 1:
-                self.undo()
+def update_display_safe(game):
+    global is_drawing
+    is_drawing = True
+    keypad_sleep()
+    try:
+        game.draw()
+    finally:
+        keypad_wake()
+        is_drawing = False
 
 
 # ==========================================
 # 3. メインループ
 # ==========================================
+keypad_wake()
 game = MolkkyGame()
-game.draw()
+update_display_safe(game)
 
+last_key = None
 while True:
-    event = scan_buttons()
-    if event:
-        key_index, is_long = event
-        print("KEY{} {}".format(key_index + 1, "long" if is_long else "short"))
-        game.handle_button(key_index, is_long)
-    time.sleep(0.02)
+    key = scan_keypad()
+    if key and key != last_key:
+        if game.state == 0:
+            if key in ["1", "2", "3", "4"]:
+                game.num_players = int(key)
+                game.redraw()
+            elif key == "10":  # Aボタンで開始
+                game.start_game()
+
+        elif game.state == 1:
+            if key.isdigit() or key in ["10", "11", "12"]:
+                game.update_score(int(key))
+            elif key == "B":  # Burst
+                game.history = {"players": [dict(p) for p in game.players], "cur_idx": game.cur_idx, "msg": game.msg}
+                game.players[game.cur_idx]["score"] = 25
+                game.msg = "Forced 25pt"
+                game.next_turn()
+                game.redraw()
+            elif key == "U":  # Undo
+                game.undo()
+            elif key == "R":  # 全リセット
+                game.state = 0
+                game.redraw()
+
+        time.sleep(0.3)  # チャタリング防止
+    last_key = key
+    time.sleep(0.05)
