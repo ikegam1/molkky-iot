@@ -100,29 +100,35 @@ class MolkkyGame:
             self.epd.text("Game: 1-12=Score", 10, 124, 0)
             self.epd.text("0=Miss U=Undo R=Reset B=25", 10, 142, 0)
         else:
-            p = self.players[self.cur_idx]
             self.epd.fill_rect(0, 0, SCREEN_W, 18, 0)  # 黒ヘッダー
-            self.epd.text("Turn:{}  Throw:{}".format(p["name"], self.turn_count), 10, 5, 0xff)
+            self.epd.text("Turn:{}".format(self.turn_count), 10, 5, 0xff)
 
-            # 現在プレイヤーのスコアを大きく中央表示（pt表記なし）
-            score_text = "OUT" if p["out"] else str(p["score"])
-            scale = 5 if len(score_text) <= 2 else 3
-            self.draw_scaled_center(score_text, 26, scale, 0)
-
-            self.epd.text(self.msg, 10, 74, 0)
-
-            # プレイヤーリスト表示（pt表記なし）
+            # プレイヤーリスト表示。各プレイヤーの点数を大きく表示し、
+            # 現在の投擲者は点数だけ白黒反転で示す。
             for i, pl in enumerate(self.players):
                 x = 10 if i < 2 else 140
-                y = 94 + (i % 2) * 26
-                mark = ">" if i == self.cur_idx else " "
-                status = "OUT" if pl["out"] else str(pl["score"])
-                self.epd.text("{}{}: {}".format(mark, pl["name"], status), x, y, 0)
+                y = 26 + (i % 2) * 55
+                current = i == self.cur_idx
+
+                self.epd.text("{}:".format(pl["name"]), x, y, 0)
+                score_text = "OUT" if pl["out"] else str(pl["score"])
+                scale = 3 if len(score_text) <= 2 else 2
+                score_x = x + 28
+                score_y = y + 10
+                score_w = len(score_text) * 8 * scale
+                score_h = 8 * scale
+                if current:
+                    self.epd.fill_rect(score_x - 4, score_y - 3, score_w + 8, score_h + 6, 0)
+                    self.draw_scaled_text(score_text, score_x, score_y, scale, 0xff)
+                else:
+                    self.draw_scaled_text(score_text, score_x, score_y, scale, 0)
+
                 miss = "X" * pl["miss"]
                 if miss == "":
                     miss = "-"
-                self.epd.text(" M:{} S:{}".format(miss, pl["sets"]), x, y + 13, 0)
+                self.epd.text("M:{} S:{}".format(miss, pl["sets"]), x, y + 39, 0)
 
+            self.epd.text(self.msg, 10, 134, 0)
             self.epd.text("1-12 score 0 miss U undo", 10, 150, 0)
             self.epd.text("R reset B burst(25)", 10, 164, 0)
 
@@ -170,7 +176,7 @@ class MolkkyGame:
                 p["score"] = 25
                 self.msg = "Over 50! Back to 25"
             else:
-                self.msg = "{} +{}pt".format(p["name"], s)
+                self.msg = "{} +{}".format(p["name"], s)
 
         self.next_turn()
         self.turn_count += 1
