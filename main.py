@@ -1,6 +1,9 @@
+print("main.py start")
 import machine
 import time
+print("imports machine/time ok")
 import epaper_driver
+print("import epaper_driver ok")
 
 try:
     led = machine.Pin("LED", machine.Pin.OUT)

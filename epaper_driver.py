@@ -35,7 +35,7 @@ LUT_DATA_4GRAY = [
 ]
 
 
-class EPD_2in7_V2_Landscape(framebuf.FrameBuffer):
+class EPD_2in7_V2_Landscape:
     """FrameBuffer-compatible wrapper around Waveshare's 2.7_V2 driver.
 
     This intentionally follows the working Waveshare Pico_ePaper-2.7_V2.py
@@ -65,12 +65,29 @@ class EPD_2in7_V2_Landscape(framebuf.FrameBuffer):
         self.spi.init(baudrate=4_000_000)
 
         self.buffer = bytearray(self.native_height * self.native_width // 8)
-        super().__init__(self.buffer, self.width, self.height, framebuf.MONO_VLSB)
+        self.fb = framebuf.FrameBuffer(self.buffer, self.width, self.height, framebuf.MONO_VLSB)
 
         self.init()
 
     def delay_ms(self, delaytime):
         utime.sleep(delaytime / 1000.0)
+
+    # Minimal FrameBuffer API used by main.py.  Use composition instead of
+    # subclassing framebuf.FrameBuffer because some MicroPython builds do not
+    # behave well when native types are subclassed.
+    def fill(self, color):
+        return self.fb.fill(color)
+
+    def fill_rect(self, x, y, w, h, color):
+        return self.fb.fill_rect(x, y, w, h, color)
+
+    def pixel(self, x, y, color=None):
+        if color is None:
+            return self.fb.pixel(x, y)
+        return self.fb.pixel(x, y, color)
+
+    def text(self, s, x, y, color):
+        return self.fb.text(s, x, y, color)
 
     def reset(self):
         self.reset_pin.value(1)
