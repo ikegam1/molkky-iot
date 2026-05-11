@@ -234,7 +234,9 @@ while True:
                 game.start_game()
 
         elif game.state == 1:
-            if key.isdigit() or key in ["10", "11", "12"]:
+            if key == "0":  # Miss
+                game.update_score(0)
+            elif key in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]:
                 game.update_score(int(key))
             elif key == "B":  # Burst
                 game.history = {
