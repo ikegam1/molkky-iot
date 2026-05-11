@@ -81,6 +81,18 @@ class EPD_2in7_V2_Landscape:
     def fill_rect(self, x, y, w, h, color):
         return self.fb.fill_rect(x, y, w, h, color)
 
+    def hline(self, x, y, w, color):
+        return self.fb.hline(x, y, w, color)
+
+    def vline(self, x, y, h, color):
+        return self.fb.vline(x, y, h, color)
+
+    def line(self, x1, y1, x2, y2, color):
+        return self.fb.line(x1, y1, x2, y2, color)
+
+    def rect(self, x, y, w, h, color):
+        return self.fb.rect(x, y, w, h, color)
+
     def pixel(self, x, y, color=None):
         if color is None:
             return self.fb.pixel(x, y)
