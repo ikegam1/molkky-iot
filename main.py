@@ -2,6 +2,10 @@ import machine
 import time
 import epaper_driver
 
+led = machine.Pin("LED", machine.Pin.OUT)
+led.value(1)
+print("molkky-iot boot")
+
 # Rect-only UI.
 # The panel renders fill_rect blocks well, while text/thin lines skew badly.
 SCREEN_W = 264
@@ -170,8 +174,12 @@ class MolkkyGame:
                 break
 
 
+print("creating game")
 game = MolkkyGame()
+print("drawing initial screen")
 game.draw()
+led.value(0)
+print("ready")
 
 last_key = None
 while True:

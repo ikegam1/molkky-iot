@@ -93,11 +93,18 @@ class EPD_2in7_V2_Landscape(framebuf.FrameBuffer):
         self.spi.write(bytearray([data]))
         self.cs_pin.value(1)
 
-    def ReadBusy(self):
+    def ReadBusy(self, timeout_ms=8000):
         # Waveshare 2.7 sample: 0=busy, 1=idle.
+        # Do not hang forever: if BUSY wiring/polarity is wrong, continue and
+        # print a clue to the serial console (Thonny/Shell).
+        waited = 0
         while self.busy_pin.value() == 0:
             self.send_command(0x71)
             self.delay_ms(10)
+            waited += 10
+            if waited >= timeout_ms:
+                print("EPD BUSY timeout; check BUSY pin GP13 / panel seating")
+                break
         self.delay_ms(200)
 
     def SetLut(self):
@@ -148,11 +155,8 @@ class EPD_2in7_V2_Landscape(framebuf.FrameBuffer):
         self.send_data(0xAF)
         self.send_command(0x30)  # PLL_CONTROL
         self.send_data(0x3A)
-        self.send_command(0x61)  # RESOLUTION_SETTING
-        self.send_data(0x00)
-        self.send_data(0xB0)  # 176
-        self.send_data(0x01)
-        self.send_data(0x08)  # 264
+        # The official Pico-ePaper-2.7 MicroPython sample does not send
+        # RESOLUTION_SETTING here; keep init byte-for-byte closer to it.
         self.send_command(0x82)  # VCOM_DC_SETTING
         self.send_data(0x12)
         self.SetLut()
@@ -167,6 +171,7 @@ class EPD_2in7_V2_Landscape(framebuf.FrameBuffer):
         if image is None or image is self.buffer:
             image = self.buffer
 
+        print("EPD display")
         high = self.native_height  # 264
         wide = self.native_width // 8  # 22
         self._send_white_plane()
@@ -181,6 +186,7 @@ class EPD_2in7_V2_Landscape(framebuf.FrameBuffer):
         self.ReadBusy()
 
     def Clear(self):
+        print("EPD clear")
         self.fill(0xFF)
         self._send_white_plane()
         self.send_command(0x13)
