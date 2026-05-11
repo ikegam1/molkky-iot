@@ -175,8 +175,8 @@ class MolkkyGame:
 
         self.epd.display()
 
-    def redraw(self):
-        update_display_safe(self)
+    def redraw(self, force_refresh=False):
+        update_display_safe(self, force_refresh)
 
     def start_game(self):
         self.players = [
@@ -199,6 +199,7 @@ class MolkkyGame:
         }
 
         p = self.players[self.cur_idx]
+        set_finished = False
         if s == 0:
             p["miss"] += 1
             if p["miss"] >= 3:
@@ -212,6 +213,7 @@ class MolkkyGame:
             if p["score"] == 50:
                 p["sets"] += 1
                 self.msg = "{} Win Set!".format(p["name"])
+                set_finished = True
                 self.reset_scores()  # 全員0点に戻して次のセットへ
             elif p["score"] > 50:
                 p["score"] = 25
@@ -222,9 +224,11 @@ class MolkkyGame:
         prev_idx = self.cur_idx
         self.next_turn()
         # Turn count advances only after all players have thrown once.
-        if self.cur_idx <= prev_idx:
+        turn_advanced = self.cur_idx <= prev_idx
+        if turn_advanced:
             self.turn_count += 1
-        self.redraw()
+        force_refresh = set_finished or (turn_advanced and self.turn_count % 5 == 0)
+        self.redraw(force_refresh)
 
     def undo(self):
         if self.history:
@@ -248,11 +252,14 @@ class MolkkyGame:
                 break
 
 
-def update_display_safe(game):
+def update_display_safe(game, force_refresh=False):
     global is_drawing
     is_drawing = True
     keypad_sleep()
     try:
+        if force_refresh:
+            print("EPD forced refresh")
+            game.epd.Clear()
         game.draw()
     finally:
         keypad_wake()
@@ -293,15 +300,17 @@ while True:
                 game.msg = "Forced 25"
                 prev_idx = game.cur_idx
                 game.next_turn()
-                if game.cur_idx <= prev_idx:
+                turn_advanced = game.cur_idx <= prev_idx
+                if turn_advanced:
                     game.turn_count += 1
-                game.redraw()
+                force_refresh = turn_advanced and game.turn_count % 5 == 0
+                game.redraw(force_refresh)
             elif key == "U":  # Undo
                 game.undo()
             elif key == "R":  # 全リセット
                 game.state = 0
                 game.turn_count = 1
-                game.redraw()
+                game.redraw(True)
 
         time.sleep(0.3)  # チャタリング防止
     last_key = key
