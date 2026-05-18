@@ -48,29 +48,29 @@ def scan_keypad():
     return None
 
 # ==========================================
-# ブザー演奏関数 (爆速・高レスポンス化に調整)
+# ブザー演奏関数 (長さとリズムで鳴らし分け)
 # ==========================================
 def play_sound(pattern):
     if pattern == "start":
-        # 試合開始：「ジャーン！」（歯切れよく0.2秒に短縮）
+        # 1. 試合開始：「ジャーン！」（長めに1回鳴らす➔0.2秒に調整）
         lgpio.gpio_write(h, BEEP_PIN, 1)
         time.sleep(0.2)
         lgpio.gpio_write(h, BEEP_PIN, 0)
         
     elif pattern == "score":
-        # スコア入力：電子機器らしい爆速の「ピッ！」（0.3秒➔0.05秒に短縮）
+        # 2. スコア入力：短く「ピッ」（0.3秒から0.05秒に短縮）
         lgpio.gpio_write(h, BEEP_PIN, 1)
         time.sleep(0.05)
         lgpio.gpio_write(h, BEEP_PIN, 0)
         
     elif pattern == "miss":
-        # 0点入力/バースト：少し間延びした「ピー」（0.5秒➔0.2秒に短縮）
+        # 3. 0点入力/バースト：少し間延びした音「ピー」（0.5秒から0.2秒に短縮）
         lgpio.gpio_write(h, BEEP_PIN, 1)
         time.sleep(0.2)
         lgpio.gpio_write(h, BEEP_PIN, 0)
         
     elif pattern == "win":
-        # ゲーム勝利：「ピピピッ！」（トータル時間を約半分に短縮）
+        # 4. ゲーム勝利：「ピピピッ！」（短く3回連続、テンポアップ）
         for _ in range(3):
             lgpio.gpio_write(h, BEEP_PIN, 1)
             time.sleep(0.1)
@@ -78,7 +78,7 @@ def play_sound(pattern):
             time.sleep(0.05)
             
     elif pattern == "out":
-        # 3ミスアウト：「ブブー！」（重々しさを残しつつテンポアップ）
+        # 5. 3ミスアウト：「ブブー！」（長めを2回重々しく、テンポアップ）
         for _ in range(2):
             lgpio.gpio_write(h, BEEP_PIN, 1)
             time.sleep(0.15)
@@ -103,7 +103,7 @@ class MolkkyGame:
 
         self.state = 0 # 0:設定, 1:進行
         self.num_players = 2
-        self.sort_mode = "R" # "R": Reverse, "S": Slide
+        self.sort_mode = "R" # "R": Reverse (デフォルト), "S": Slide
         self.players = []
         self.cur_idx = 0
         self.history = None
@@ -116,8 +116,11 @@ class MolkkyGame:
         draw = ImageDraw.Draw(image)
 
         if self.state == 0:
+            # --- 設定画面レイアウトの最適化 ---
             draw.text((10, 5), "MOLKKY SCORE", font=self.font_m, fill=0)
+            # Playersの文字サイズをfont_mに変更し、Sort表示と横並びにスッキリ配置
             draw.text((10, 30), f"Players: {self.num_players}  Sort: {self.sort_mode}", font=self.font_m, fill=0)
+            # ご指定いただいた操作ガイドテキスト
             draw.text((10, 60), "1 - 4: Set / 5: Reverse / 6: Slide", font=self.font_s, fill=0)
             draw.text((10, 85), "10: Start / R: Reset / U: Undo", font=self.font_s, fill=0)
         else:
@@ -178,7 +181,7 @@ class MolkkyGame:
             elif p["score"] > 50:
                 p["score"] = 25
                 self.msg = "Burst!"
-                play_sound("miss")
+                play_sound("miss")  # バースト時も警告音(長め)
             else:
                 self.msg = f"+{s}"
                 play_sound("score")
@@ -187,6 +190,7 @@ class MolkkyGame:
         alive_players = [pl for pl in self.players if not pl["out"]]
         
         if len(alive_players) == 0:
+            # 万が一全員失格になった場合、設定画面に戻す
             self.msg = "ALL OUT! RESET"
             play_sound("out")
             self.state = 0
@@ -194,21 +198,23 @@ class MolkkyGame:
             return
             
         elif len(alive_players) == 1 and self.num_players > 1:
+            # 複数人プレイで、残り1人になった場合、その人を50点にして勝利とする
             last_p = alive_players[0]
             last_p["score"] = 50
             last_p["sets"] += 1
             self.msg = f"{last_p['name']} WIN (Last)"
             is_win = True
-            is_out_event = False
+            is_out_event = False  # 勝利音を優先
 
         # --- 3. 状態に応じたブザーと画面の確定処理 ---
         if is_win:
             play_sound("win")
             
+            # ➔➔➔ セット終了時、設定されたモードに応じて投げ順（配列）を並び替え
             if self.sort_mode == "R":
-                self.players.reverse()
+                self.players.reverse()                      # Reverse: 配列を完全に反転
             elif self.sort_mode == "S":
-                self.players = self.players[1:] + self.players[:1]
+                self.players = self.players[1:] + self.players[:1]  # Slide: 先頭を末尾に移動
                 
             self.reset_scores()
             self.cur_idx = 0
@@ -244,3 +250,38 @@ if __name__ == "__main__":
     try:
         while True:
             key = scan_keypad()
+            if key:
+                print(f"Key Pressed: {key}")
+                if game.state == 0:
+                    if key in ["1", "2", "3", "4"]:
+                        game.num_players = int(key)
+                        game.draw()
+                    elif key == "5":
+                        game.sort_mode = "R"  # Reverseモードに設定
+                        game.draw()
+                    elif key == "6":
+                        game.sort_mode = "S"  # Slideモードに設定
+                        game.draw()
+                    elif key == "10":
+                        game.start_game()
+                        play_sound("start")  # 試合開始音「ジャーン！」
+                elif game.state == 1:
+                    if key == "R":
+                        game.state = 0
+                        game.draw()
+                    elif key == "U":
+                        if game.history:
+                            game.players = game.history["players"]
+                            game.cur_idx = game.history["cur_idx"]
+                            game.msg = "Undo"
+                            game.turn_count = game.history["turn_count"]
+                            game.history = None
+                            game.draw()
+                    elif key in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]:
+                        game.update_score(int(key))
+                    elif key == "O":
+                        game.update_score(0)
+            
+            time.sleep(0.05)
+    except KeyboardInterrupt:
+        lgpio.gpiochip_close(h)
