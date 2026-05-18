@@ -6,11 +6,11 @@ from PIL import Image, ImageDraw, ImageFont
 import epd2in13_V4
 
 # ==========================================
-# 1. キーパッド設定 (lgpioを使用)
+# 1. ハードウェア設定 (キーパッド & ブザー)
 # ==========================================
-# 配線: ROW: 26,12,20,16 / COL: 5,6,13,19
 ROW_PINS = [26, 12, 20, 16]
 COL_PINS = [5, 6, 13, 19]
+BEEP_PIN = 22  # ブザー用のピン
 
 KEY_MAP = [
     ["1", "2", "3", "U"],
@@ -22,7 +22,7 @@ KEY_MAP = [
 # GPIOチップのオープン
 h = lgpio.gpiochip_open(0)
 
-def setup_keypad():
+def setup_hardware():
     # COLを出力、初期値HIGH
     for pin in COL_PINS:
         lgpio.gpio_claim_output(h, pin)
@@ -30,6 +30,9 @@ def setup_keypad():
     # ROWを入力、プルアップ
     for pin in ROW_PINS:
         lgpio.gpio_claim_input(h, pin, lgpio.SET_PULL_UP)
+    # ブザーを出力、初期値LOW(消音)
+    lgpio.gpio_claim_output(h, BEEP_PIN)
+    lgpio.gpio_write(h, BEEP_PIN, 0)
 
 def scan_keypad():
     for c_idx, c_pin in enumerate(COL_PINS):
@@ -45,6 +48,44 @@ def scan_keypad():
     return None
 
 # ==========================================
+# ブザー演奏関数 (長さとリズムで鳴らし分け)
+# ==========================================
+def play_sound(pattern):
+    if pattern == "start":
+        # 1. 試合開始：「ジャーン！」（長めに1回鳴らす）
+        lgpio.gpio_write(h, BEEP_PIN, 1)
+        time.sleep(0.5)
+        lgpio.gpio_write(h, BEEP_PIN, 0)
+        
+    elif pattern == "score":
+        # 2. スコア入力：短く「ピッ」
+        lgpio.gpio_write(h, BEEP_PIN, 1)
+        time.sleep(0.3)
+        lgpio.gpio_write(h, BEEP_PIN, 0)
+        
+    elif pattern == "miss":
+        # 3. 0点入力/バースト：少し間延びした音「ピー」
+        lgpio.gpio_write(h, BEEP_PIN, 1)
+        time.sleep(0.5)
+        lgpio.gpio_write(h, BEEP_PIN, 0)
+        
+    elif pattern == "win":
+        # 4. ゲーム勝利：「ピピピッ！」（短く3回連続）
+        for _ in range(3):
+            lgpio.gpio_write(h, BEEP_PIN, 1)
+            time.sleep(0.4)
+            lgpio.gpio_write(h, BEEP_PIN, 0)
+            time.sleep(0.1)
+            
+    elif pattern == "out":
+        # 5. 3ミスアウト：「ブブー！」（長めを2回重々しく）
+        for _ in range(2):
+            lgpio.gpio_write(h, BEEP_PIN, 1)
+            time.sleep(0.4)
+            lgpio.gpio_write(h, BEEP_PIN, 0)
+            time.sleep(0.2)
+
+# ==========================================
 # 2. ゲーム管理
 # ==========================================
 class MolkkyGame:
@@ -54,7 +95,6 @@ class MolkkyGame:
         self.height = self.epd.width # 122
         
         try:
-            # フォントパスはZeroの標準的な場所を指定
             self.font_s = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
             self.font_m = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
             self.font_l = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 30)
@@ -76,11 +116,11 @@ class MolkkyGame:
         draw = ImageDraw.Draw(image)
 
         if self.state == 0:
-            # タイトル表示
+            # --- 設定画面レイアウトの最適化 ---
             draw.text((10, 5), "MOLKKY SCORE", font=self.font_m, fill=0)
-            # プレイヤー数とソートモード（font_mに縮小して横並びに綺麗に配置）
+            # Playersの文字サイズをfont_mに変更し、Sort表示と横並びにスッキリ配置
             draw.text((10, 30), f"Players: {self.num_players}  Sort: {self.sort_mode}", font=self.font_m, fill=0)
-            # 操作ガイド（ご指定のテキスト通りに配置・縦軸のバランスを微調整）
+            # ご指定いただいた操作ガイドテキスト
             draw.text((10, 60), "1 - 4: Set / 5: Reverse / 6: Slide", font=self.font_s, fill=0)
             draw.text((10, 85), "10: Start / R: Reset / U: Undo", font=self.font_s, fill=0)
         else:
@@ -107,7 +147,6 @@ class MolkkyGame:
         self.epd.sleep()
 
     def start_game(self):
-        # 初期の投げ順でプレイヤーリストを生成
         self.players = [{"name":f"P{i+1}","score":0,"miss":0,"sets":0,"out":False} for i in range(self.num_players)]
         self.state = 1
         self.cur_idx = 0
@@ -118,42 +157,83 @@ class MolkkyGame:
     def update_score(self, s):
         self.history = {"players":[dict(p) for p in self.players],"cur_idx":self.cur_idx,"msg":self.msg,"turn_count":self.turn_count}
         p = self.players[self.cur_idx]
+        
+        is_win = False
+        is_out_event = False
+
+        # --- 1. スコア/ミスの基本計算 ---
         if s == 0:
             p["miss"] += 1
-            if p["miss"] >= 3: p["out"] = True; self.msg = f"{p['name']} OUT"
-            else: self.msg = f"{p['name']} Miss"
+            if p["miss"] >= 3:
+                p["out"] = True
+                self.msg = f"{p['name']} OUT"
+                is_out_event = True
+            else:
+                self.msg = f"{p['name']} Miss"
+                play_sound("miss")
         else:
             p["miss"] = 0
             p["score"] += s
             if p["score"] == 50:
                 p["sets"] += 1
                 self.msg = f"{p['name']} WIN"
-                
-                # 次のセットに向けて投げ順を変更
-                if self.sort_mode == "R":
-                    # Reverse: 現在の並び順を完全に反転
-                    self.players.reverse()
-                elif self.sort_mode == "S":
-                    # Slide: 先頭を末尾に回して1つずつズラす (A->B->C ➔ B->C->A)
-                    self.players = self.players[1:] + self.players[:1]
-                
-                self.reset_scores()
-                self.cur_idx = 0
-                self.turn_count = 1
-                self.draw()
-                return # 新しいセットが始まるためここで処理を抜ける
-                
+                is_win = True
             elif p["score"] > 50:
-                p["score"] = 25; self.msg = "Burst!"
+                p["score"] = 25
+                self.msg = "Burst!"
+                play_sound("miss")  # バースト時も警告音(長め)
             else:
                 self.msg = f"+{s}"
+                play_sound("score")
+
+        # --- 2. 生存プレイヤーの判定ロジック ---
+        alive_players = [pl for pl in self.players if not pl["out"]]
         
-        # 次の生存プレイヤーへ手番を移動
+        if len(alive_players) == 0:
+            # 万が一全員失格になった場合、設定画面に戻す
+            self.msg = "ALL OUT! RESET"
+            play_sound("out")
+            self.state = 0
+            self.draw()
+            return
+            
+        elif len(alive_players) == 1 and self.num_players > 1:
+            # 複数人プレイで、残り1人になった場合、その人を50点にして勝利とする
+            last_p = alive_players[0]
+            last_p["score"] = 50
+            last_p["sets"] += 1
+            self.msg = f"{last_p['name']} WIN (Last)"
+            is_win = True
+            is_out_event = False  # 勝利音を優先
+
+        # --- 3. 状態に応じたブザーと画面の確定処理 ---
+        if is_win:
+            play_sound("win")
+            
+            # ➔➔➔ セット終了時、設定されたモードに応じて投げ順（配列）を並び替え
+            if self.sort_mode == "R":
+                self.players.reverse()                      # Reverse: 配列を完全に反転
+            elif self.sort_mode == "S":
+                self.players = self.players[1:] + self.players[:1]  # Slide: 先頭を末尾に移動
+                
+            self.reset_scores()
+            self.cur_idx = 0
+            self.turn_count = 1
+            self.draw()
+            return
+        elif is_out_event:
+            play_sound("out")
+
+        # --- 4. 次のプレイヤーへ手番を移す ---
         prev = self.cur_idx
         for _ in range(self.num_players):
             self.cur_idx = (self.cur_idx + 1) % self.num_players
-            if not self.players[self.cur_idx]["out"]: break
-        if self.cur_idx <= prev: self.turn_count += 1
+            if not self.players[self.cur_idx]["out"]:
+                break
+                
+        if self.cur_idx <= prev:
+            self.turn_count += 1
+            
         self.draw()
 
     def reset_scores(self):
@@ -163,7 +243,7 @@ class MolkkyGame:
 # 3. メインループ
 # ==========================================
 if __name__ == "__main__":
-    setup_keypad()
+    setup_hardware()
     game = MolkkyGame()
     game.draw()
     
@@ -177,13 +257,14 @@ if __name__ == "__main__":
                         game.num_players = int(key)
                         game.draw()
                     elif key == "5":
-                        game.sort_mode = "R"
+                        game.sort_mode = "R"  # Reverseモードに設定
                         game.draw()
                     elif key == "6":
-                        game.sort_mode = "S"
+                        game.sort_mode = "S"  # Slideモードに設定
                         game.draw()
                     elif key == "10":
                         game.start_game()
+                        play_sound("start")  # 試合開始音「ジャーン！」
                 elif game.state == 1:
                     if key == "R":
                         game.state = 0
@@ -198,7 +279,7 @@ if __name__ == "__main__":
                             game.draw()
                     elif key in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]:
                         game.update_score(int(key))
-                    elif key == "O": # 0点(Miss)として扱う
+                    elif key == "O":
                         game.update_score(0)
             
             time.sleep(0.05)
