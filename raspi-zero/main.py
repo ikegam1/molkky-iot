@@ -63,6 +63,7 @@ class MolkkyGame:
 
         self.state = 0 # 0:設定, 1:進行
         self.num_players = 2
+        self.sort_mode = "R" # "R": Reverse (デフォルト), "S": Slide
         self.players = []
         self.cur_idx = 0
         self.history = None
@@ -75,10 +76,13 @@ class MolkkyGame:
         draw = ImageDraw.Draw(image)
 
         if self.state == 0:
+            # タイトル表示
             draw.text((10, 5), "MOLKKY SCORE", font=self.font_m, fill=0)
-            draw.text((10, 30), f"Players: {self.num_players}", font=self.font_l, fill=0)
-            draw.text((10, 75), "1-4:Set / 10:Start", font=self.font_s, fill=0)
-            draw.text((10, 95), "R:Reset / U:Undo", font=self.font_s, fill=0)
+            # プレイヤー数とソートモード（font_mに縮小して横並びに綺麗に配置）
+            draw.text((10, 30), f"Players: {self.num_players}  Sort: {self.sort_mode}", font=self.font_m, fill=0)
+            # 操作ガイド（ご指定のテキスト通りに配置・縦軸のバランスを微調整）
+            draw.text((10, 60), "1 - 4: Set / 5: Reverse / 6: Slide", font=self.font_s, fill=0)
+            draw.text((10, 85), "10: Start / R: Reset / U: Undo", font=self.font_s, fill=0)
         else:
             draw.rectangle((0, 0, self.width, 20), fill=0)
             draw.text((5, 2), f"T:{self.turn_count} {self.msg}", font=self.font_s, fill=1)
@@ -103,6 +107,7 @@ class MolkkyGame:
         self.epd.sleep()
 
     def start_game(self):
+        # 初期の投げ順でプレイヤーリストを生成
         self.players = [{"name":f"P{i+1}","score":0,"miss":0,"sets":0,"out":False} for i in range(self.num_players)]
         self.state = 1
         self.cur_idx = 0
@@ -121,12 +126,29 @@ class MolkkyGame:
             p["miss"] = 0
             p["score"] += s
             if p["score"] == 50:
-                p["sets"] += 1; self.msg = f"{p['name']} WIN"; self.reset_scores()
+                p["sets"] += 1
+                self.msg = f"{p['name']} WIN"
+                
+                # 次のセットに向けて投げ順を変更
+                if self.sort_mode == "R":
+                    # Reverse: 現在の並び順を完全に反転
+                    self.players.reverse()
+                elif self.sort_mode == "S":
+                    # Slide: 先頭を末尾に回して1つずつズラす (A->B->C ➔ B->C->A)
+                    self.players = self.players[1:] + self.players[:1]
+                
+                self.reset_scores()
+                self.cur_idx = 0
+                self.turn_count = 1
+                self.draw()
+                return # 新しいセットが始まるためここで処理を抜ける
+                
             elif p["score"] > 50:
                 p["score"] = 25; self.msg = "Burst!"
             else:
                 self.msg = f"+{s}"
         
+        # 次の生存プレイヤーへ手番を移動
         prev = self.cur_idx
         for _ in range(self.num_players):
             self.cur_idx = (self.cur_idx + 1) % self.num_players
@@ -154,6 +176,12 @@ if __name__ == "__main__":
                     if key in ["1", "2", "3", "4"]:
                         game.num_players = int(key)
                         game.draw()
+                    elif key == "5":
+                        game.sort_mode = "R"
+                        game.draw()
+                    elif key == "6":
+                        game.sort_mode = "S"
+                        game.draw()
                     elif key == "10":
                         game.start_game()
                 elif game.state == 1:
@@ -176,4 +204,3 @@ if __name__ == "__main__":
             time.sleep(0.05)
     except KeyboardInterrupt:
         lgpio.gpiochip_close(h)
-
