@@ -186,4 +186,143 @@ void commit_score(int s) {
         }
     }
 
-    if (alive_count == 0
+    if (alive_count == 0) {
+        msg = "ALL OUT! RESET";
+        play_sound("out");
+        state = 0;
+        draw_screen();
+        return;
+    } else if (alive_count == 1 && num_players > 1) {
+        // 残り1人になったらその人を勝利とする
+        players[last_alive_idx].score = 50;
+        players[last_alive_idx].sets++;
+        msg = players[last_alive_idx].name + " WIN (Last)";
+        is_win = true;
+        is_out_event = false;
+    }
+
+    if (is_win) {
+        play_sound("win");
+        // スコアのみリセット、セット数は維持
+        for (int i = 0; i < num_players; i++) {
+            players[i].score = 0;
+            players[i].miss = 0;
+            players[i].out = false;
+        }
+        cur_idx = 0;
+        turn_count = 1;
+        input_score = 0;
+        draw_screen();
+        return;
+    } else if (is_out_event) {
+        play_sound("out");
+    }
+
+    // 次のプレイヤーへ手番移動
+    int prev = cur_idx;
+    for (int i = 0; i < num_players; i++) {
+        cur_idx = (cur_idx + 1) % num_players;
+        if (!players[cur_idx].out) break;
+    }
+    if (cur_idx <= prev) turn_count++;
+
+    input_score = 0; // 入力バッファリセット
+    draw_screen();
+}
+
+// ==========================================
+// セットアップ & メインループ
+// ==========================================
+void setup() {
+    // 5方向スイッチの設定
+    pinMode(WIO_5S_UP, INPUT_PULLUP);
+    pinMode(WIO_5S_DOWN, INPUT_PULLUP);
+    pinMode(WIO_5S_LEFT, INPUT_PULLUP);
+    pinMode(WIO_5S_RIGHT, INPUT_PULLUP);
+    pinMode(WIO_5S_PRESS, INPUT_PULLUP);
+
+    // 上部3つのボタン設定 (左からA, B, C)
+    pinMode(WIO_KEY_A, INPUT_PULLUP);
+    pinMode(WIO_KEY_B, INPUT_PULLUP);
+    pinMode(WIO_KEY_C, INPUT_PULLUP);
+
+    // ブザーピンの設定
+    pinMode(WIO_BUZZER, OUTPUT);
+
+    // ディスプレイ初期化
+    tft.begin();
+    tft.setRotation(3); // 画面を横向きに設定
+    draw_screen();
+}
+
+void loop() {
+    // --- 状態0：設定画面のキー処理 ---
+    if (state == 0) {
+        if (digitalRead(WIO_5S_UP) == LOW) {
+            num_players = (num_players == 4) ? 2 : num_players + 1;
+            draw_screen(); delay(200);
+        }
+        if (digitalRead(WIO_5S_DOWN) == LOW) {
+            num_players = (num_players == 2) ? 4 : num_players - 1;
+            draw_screen(); delay(200);
+        }
+        if (digitalRead(WIO_5S_PRESS) == LOW) {
+            start_game(); delay(300);
+        }
+    } 
+    // --- 状態1：ゲーム進行画面のキー処理 ---
+    else if (state == 1) {
+        // 【変更】上下キーで入力点数を調整 (0〜12点)
+        if (digitalRead(WIO_5S_DOWN) == LOW) { // 下キーで減算
+            input_score = (input_score == 0) ? 12 : input_score - 1;
+            draw_screen(); delay(150);
+        }
+        if (digitalRead(WIO_5S_UP) == LOW) { // 上キーで加算
+            input_score = (input_score == 12) ? 0 : input_score + 1;
+            draw_screen(); delay(150);
+        }
+
+        // 【変更】左右キーで「プレイヤーの手動選択(スキップや手直し用)」
+        if (digitalRead(WIO_5S_LEFT) == LOW) { // 左キーで前のプレイヤーへ
+            do {
+                cur_idx = (cur_idx == 0) ? num_players - 1 : cur_idx - 1;
+            } while (players[cur_idx].out);
+            draw_screen(); delay(250);
+        }
+        if (digitalRead(WIO_5S_RIGHT) == LOW) { // 右キーで次のプレイヤーへ
+            do {
+                cur_idx = (cur_idx + 1) % num_players;
+            } while (players[cur_idx].out);
+            draw_screen(); delay(250);
+        }
+
+        // 5方向キー押し込みでスコア確定
+        if (digitalRead(WIO_5S_PRESS) == LOW) {
+            commit_score(input_score);
+            delay(300);
+        }
+
+        // --- 上部ボタンの特殊割り当て ---
+        // ボタンA (一番左): 0点(Miss)を即座に確定
+        if (digitalRead(WIO_KEY_A) == LOW) {
+            commit_score(0);
+            delay(300);
+        }
+        // ボタンB (真ん中): 強制的に25点（バースト手直しなど）にする
+        if (digitalRead(WIO_KEY_B) == LOW) {
+            players[cur_idx].score = 25;
+            players[cur_idx].miss = 0;
+            msg = "Forced 25";
+            play_sound("miss");
+            draw_screen();
+            delay(300);
+        }
+        // ボタンC (一番右): 設定画面（リセット）に戻る
+        if (digitalRead(WIO_KEY_C) == LOW) {
+            state = 0;
+            draw_screen();
+            delay(300);
+        }
+    }
+    delay(20); // チャタリング・CPU負荷軽減
+}
