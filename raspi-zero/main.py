@@ -53,37 +53,39 @@ def scan_keypad():
 def play_sound(pattern):
     if pattern == "start":
         # 1. 試合開始：「ジャーン！」（長めに1回鳴らす➔0.2秒に調整）
-        lgpio.gpio_write(h, BEEP_PIN, 1)
-        time.sleep(0.2)
-        lgpio.gpio_write(h, BEEP_PIN, 0)
-        
+        for _ in range(2):
+            lgpio.gpio_write(h, BEEP_PIN, 1)
+            time.sleep(0.4)
+            lgpio.gpio_write(h, BEEP_PIN, 0)
+            time.sleep(0.15)
+
     elif pattern == "score":
         # 2. スコア入力：短く「ピッ」（0.3秒から0.05秒に短縮）
         lgpio.gpio_write(h, BEEP_PIN, 1)
-        time.sleep(0.05)
+        time.sleep(0.3)
         lgpio.gpio_write(h, BEEP_PIN, 0)
-        
+
     elif pattern == "miss":
         # 3. 0点入力/バースト：少し間延びした音「ピー」（0.5秒から0.2秒に短縮）
         lgpio.gpio_write(h, BEEP_PIN, 1)
-        time.sleep(0.2)
+        time.sleep(0.5)
         lgpio.gpio_write(h, BEEP_PIN, 0)
-        
+
     elif pattern == "win":
-        # 4. ゲーム勝利：「ピピピッ！」（短く3回連続、テンポアップ）
-        for _ in range(3):
+        # 4. ゲーム勝利：「ピピッ！」（短く2回連続、テンポアップ）
+        for _ in range(2):
             lgpio.gpio_write(h, BEEP_PIN, 1)
-            time.sleep(0.1)
+            time.sleep(0.3)
             lgpio.gpio_write(h, BEEP_PIN, 0)
-            time.sleep(0.05)
-            
+            time.sleep(0.15)
+
     elif pattern == "out":
         # 5. 3ミスアウト：「ブブー！」（長めを2回重々しく、テンポアップ）
         for _ in range(2):
             lgpio.gpio_write(h, BEEP_PIN, 1)
-            time.sleep(0.15)
+            time.sleep(0.45)
             lgpio.gpio_write(h, BEEP_PIN, 0)
-            time.sleep(0.08)
+            time.sleep(0.16)
 
 # ==========================================
 # 2. ゲーム管理
@@ -93,7 +95,7 @@ class MolkkyGame:
         self.epd = epd2in13_V4.EPD()
         self.width = self.epd.height # 250
         self.height = self.epd.width # 122
-        
+
         try:
             self.font_s = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
             self.font_m = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
@@ -131,14 +133,14 @@ class MolkkyGame:
                 x = 10 if i < 2 else 130
                 y = 25 + (i % 2) * 45
                 draw.text((x, y), f"{pl['name']}:", font=self.font_s, fill=0)
-                
+
                 score_str = "OUT" if pl["out"] else str(pl["score"])
                 if i == self.cur_idx:
                     draw.rectangle((x+30, y-2, x+75, y+22), fill=0)
                     draw.text((x+35, y), score_str, font=self.font_m, fill=1)
                 else:
                     draw.text((x+35, y), score_str, font=self.font_m, fill=0)
-                
+
                 m_str = "X" * pl["miss"] if pl["miss"] > 0 else "-"
                 draw.text((x, y+22), f"M:{m_str} S:{pl['sets']}", font=self.font_s, fill=0)
 
@@ -157,7 +159,7 @@ class MolkkyGame:
     def update_score(self, s):
         self.history = {"players":[dict(p) for p in self.players],"cur_idx":self.cur_idx,"msg":self.msg,"turn_count":self.turn_count}
         p = self.players[self.cur_idx]
-        
+
         is_win = False
         is_out_event = False
 
@@ -188,7 +190,7 @@ class MolkkyGame:
 
         # --- 2. 生存プレイヤーの判定ロジック ---
         alive_players = [pl for pl in self.players if not pl["out"]]
-        
+
         if len(alive_players) == 0:
             # 万が一全員失格になった場合、設定画面に戻す
             self.msg = "ALL OUT! RESET"
@@ -196,7 +198,7 @@ class MolkkyGame:
             self.state = 0
             self.draw()
             return
-            
+
         elif len(alive_players) == 1 and self.num_players > 1:
             # 複数人プレイで、残り1人になった場合、その人を50点にして勝利とする
             last_p = alive_players[0]
@@ -209,13 +211,13 @@ class MolkkyGame:
         # --- 3. 状態に応じたブザーと画面の確定処理 ---
         if is_win:
             play_sound("win")
-            
+
             # ➔➔➔ セット終了時、設定されたモードに応じて投げ順（配列）を並び替え
             if self.sort_mode == "R":
                 self.players.reverse()                      # Reverse: 配列を完全に反転
             elif self.sort_mode == "S":
                 self.players = self.players[1:] + self.players[:1]  # Slide: 先頭を末尾に移動
-                
+
             self.reset_scores()
             self.cur_idx = 0
             self.turn_count = 1
@@ -230,10 +232,10 @@ class MolkkyGame:
             self.cur_idx = (self.cur_idx + 1) % self.num_players
             if not self.players[self.cur_idx]["out"]:
                 break
-                
+
         if self.cur_idx <= prev:
             self.turn_count += 1
-            
+
         self.draw()
 
     def reset_scores(self):
@@ -246,7 +248,7 @@ if __name__ == "__main__":
     setup_hardware()
     game = MolkkyGame()
     game.draw()
-    
+
     try:
         while True:
             key = scan_keypad()
@@ -263,8 +265,8 @@ if __name__ == "__main__":
                         game.sort_mode = "S"  # Slideモードに設定
                         game.draw()
                     elif key == "10":
+                        play_sound("start")  # 試合開始音
                         game.start_game()
-                        play_sound("start")  # 試合開始音「ジャーン！」
                 elif game.state == 1:
                     if key == "R":
                         game.state = 0
@@ -281,7 +283,7 @@ if __name__ == "__main__":
                         game.update_score(int(key))
                     elif key == "O":
                         game.update_score(0)
-            
+
             time.sleep(0.05)
     except KeyboardInterrupt:
         lgpio.gpiochip_close(h)
