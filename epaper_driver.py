@@ -69,7 +69,7 @@ class EPD_2in7_V2_Landscape:
         self.LUT_DATA_4Gray = LUT_DATA_4GRAY
 
         self.spi = SPI(1)
-        self.spi.init(baudrate=4_000_000)
+        self.spi.init(baudrate=1_000_000)
 
         self.buffer = bytearray(self.native_height * self.native_width // 8)
         self.fb = framebuf.FrameBuffer(self.buffer, self.width, self.height, framebuf.MONO_VLSB)
@@ -112,7 +112,7 @@ class EPD_2in7_V2_Landscape:
         self.reset_pin.value(1)
         self.delay_ms(200)
         self.reset_pin.value(0)
-        self.delay_ms(2)
+        self.delay_ms(10) # increased from 2
         self.reset_pin.value(1)
         self.delay_ms(200)
 
